@@ -51,7 +51,9 @@ uniqGenome <-
 seqlevelsStyle(uniqGenome) <- "UCSC"
 recRepGenome <- 
   import(here("data/recent_repeat_file.bed.gz"))
-seqlevelsStyle(uniqGenome) <- "UCSC"
+seqlevelsStyle(recRepGenome) <- "UCSC"
+ancientRepGenome <- setdiff(gaps(uniqGenome), recRepGenome)
+allGenome <- SeqinfoForUCSCGenome("hg19") %>% as("GRanges")
 
 
 #functions for cleaning data
@@ -152,8 +154,38 @@ familyEstimates <-
       withBatch = FALSE)  %>%
       filter(factor == "familyNr")
   ) %>%
-  mutate(set = rep(c("inova1", "inova2", "sasani", "autism1", "autism2"),2)) %>%
-  mutate(region = c(rep("unique", 5), rep("recentReps", 5)))
+  bind_rows(
+    filterAndCalculate(inova1, ancientRepGenome),
+    filterAndCalculate(inova2, ancientRepGenome),
+    filterAndCalculate(sasani, ancientRepGenome),
+    calcRelativeVarCorsWithCi(
+      dnmVarianceComponents::dnmDataAut %>% 
+        mutate(n = ancient_snv), 
+      withBatch = FALSE) %>%
+      filter(factor == "familyNr"),
+    calcRelativeVarCorsWithCi(
+      dnmVarianceComponents::dnmDataAut2 %>% 
+        mutate(n = snvs_ancient), 
+      withBatch = FALSE)  %>%
+      filter(factor == "familyNr")
+  ) %>%
+  bind_rows(
+    filterAndCalculate(inova1, allGenome),
+    filterAndCalculate(inova2, allGenome),
+    filterAndCalculate(sasani, allGenome),
+    calcRelativeVarCorsWithCi(
+      dnmVarianceComponents::dnmDataAut %>% 
+        mutate(n = SNVs), 
+      withBatch = FALSE) %>%
+      filter(factor == "familyNr"),
+    calcRelativeVarCorsWithCi(
+      dnmVarianceComponents::dnmDataAut2 %>% 
+        mutate(n = snvs_all), 
+      withBatch = FALSE)  %>%
+      filter(factor == "familyNr")
+  ) %>%
+  mutate(set = rep(c("inova1", "inova2", "sasani", "autism1", "autism2"), 4)) %>%
+  mutate(region = c(rep("unique", 5), rep("recentReps", 5), rep("ancientReps", 5), rep("allGenome", 5)))
 
 
 ggplot(familyEstimates,
@@ -161,6 +193,13 @@ ggplot(familyEstimates,
            y=relVar.total,
            ymin=lower.total,
            ymax=upper.total)) + 
-  geom_pointrange()
+  geom_pointrange() + 
+  facet_wrap(~region, ncol=1) +
+  theme_bw()
+
+ggsave(here("estimates.png"))
+write_delim(familyEstimates,
+            here("estimates.tsv"),
+            delim = "\t")
 
 
