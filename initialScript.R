@@ -198,8 +198,66 @@ ggplot(familyEstimates,
   theme_bw()
 
 ggsave(here("estimates.png"))
+
+
+
+#some augmentative statistics as proxy for reliability
+familyStats <- function(inova1, allGenome) {
+  familys <- 
+    filterMuts(inova1, allGenome) %>% 
+    group_by(familyNr) %>% 
+    summarise(no.offspring = length(unique(SampleID))) %>% 
+    filter(no.offspring>=2) 
+  no.muts <- 
+    filterMuts(inova1, allGenome) %>% 
+    filter(familyNr %in% familys$familyNr) %>% 
+    nrow()
+  no.familys <- 
+    familys %>% 
+    nrow()
+  no.offspring <- 
+    familys %>%
+    with(sum(no.offspring))
+  tibble(no.familys=no.familys, no.muts.pp=no.muts/no.offspring)
+}
+familyStatsFrTbl <- function(autism1, tblHdr = "unique_snv") {
+  no.offspring <- sum(autism1[, tblHdr]>0)
+  no.familys <- autism1$familyNr %>% unique() %>% length()
+  no.muts <- sum(autism1[, tblHdr])
+  tibble(no.familys=no.familys, no.muts.pp=no.muts/no.offspring)
+}
+
+
+familyDf <- 
+  bind_rows(
+    familyStats(inova1, uniqGenome),
+    familyStats(inova2, uniqGenome),
+    familyStats(sasani, uniqGenome),
+    familyStatsFrTbl(autism1, "unique_snv"),
+    familyStatsFrTbl(autism2, "snvs_unique"),
+    familyStats(inova1, recRepGenome),
+    familyStats(inova2, recRepGenome),
+    familyStats(sasani, recRepGenome),
+    familyStatsFrTbl(autism1, "recent_snv"),
+    familyStatsFrTbl(autism2, "snvs_recent"),
+    familyStats(inova1, ancientRepGenome),
+    familyStats(inova2, ancientRepGenome),
+    familyStats(sasani, ancientRepGenome),
+    familyStatsFrTbl(autism1, "ancient_snv"),
+    familyStatsFrTbl(autism2, "snvs_ancient"),
+    familyStats(inova1, allGenome),
+    familyStats(inova2, allGenome),
+    familyStats(sasani, allGenome),
+    familyStatsFrTbl(autism1, "SNVs"),
+    familyStatsFrTbl(autism2, "snvs_all")
+  )
+
+familyEstimates <- 
+  bind_cols(
+    familyEstimates,
+    familyDf
+  )
+
 write_delim(familyEstimates,
             here("estimates.tsv"),
             delim = "\t")
-
-
