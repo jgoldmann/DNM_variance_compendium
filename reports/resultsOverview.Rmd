@@ -1,0 +1,399 @@
+---
+title: "Results"
+author: "Jakob"
+output: 
+    html_document:
+      code_folding: hide
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+Setup
+=====
+
+Load packages
+```{r}
+library(tidyverse)
+library(drake)
+library(here)
+library(rtracklayer)
+library(rptR)
+library(inovaDNMs)
+library(inovaDNMs102)
+library(dnmVarianceComponents)
+library(ggbeeswarm)
+
+```
+
+Get data
+--------
+
+Get the DNMs & have them in the right format
+```{r}
+inova1 <- 
+  inovaDNMs::obs %>%
+  dplyr::rename(
+    SampleID = internalID,
+    Variant = Variant, 
+    Chr = Chromosome,
+    Position = Start.position)  %>%
+  full_join(inovaDNMs::trios %>% 
+              filter(in.data), 
+            by=c(SampleID = "Trio.ID")) %>%
+  dplyr::rename(familyNr = Family.Study.ID)
+
+inova2 <- 
+  inovaDNMs102::allDNMs %>%
+  dplyr::rename(
+    SampleID = sampleName,
+    Variant = alt, 
+    Chr = chrom,
+    Position = start) %>%
+  full_join(inovaDNMs102::trios, 
+            by=c(SampleID = "PROBANDID")) %>%
+  dplyr::rename(familyNr = FAMILYID) %>%
+  mutate(end = NULL)
+
+#sasani DNMs
+sasani <- 
+  read_delim("https://github.com/quinlan-lab/ceph-dnm-manuscript/raw/master/data/second_gen.dnms.txt",
+             delim = "\t",
+             col_types = cols(chrom = col_character(),
+                              new_family_id = col_character())) %>%
+  bind_rows(read_delim("https://github.com/quinlan-lab/ceph-dnm-manuscript/raw/master/data/third_gen.dnms.txt",
+                       delim = "\t",
+                       col_types = cols(chrom = col_character(),
+                                        new_family_id = col_character()))) %>%
+  bind_rows(read_delim("https://github.com/quinlan-lab/ceph-dnm-manuscript/raw/master/data/post-pgcs.dnms.txt",
+                       delim = "\t",
+                       col_types = cols(chrom = col_character(),
+                                        new_family_id = col_character()))) %>%
+  bind_rows(read_delim("https://github.com/quinlan-lab/ceph-dnm-manuscript/raw/master/data/gonosomal.dnms.txt",
+                       delim = "\t",
+                       col_types = cols(chrom = col_character(),
+                                        new_family_id = col_character()))) %>%
+  mutate(Chr = paste0("chr", chrom)) %>%
+  dplyr::rename(
+    SampleID = new_sample_id,
+    Variant = ref, 
+    Position = start,
+    fathersAgeAtConceptionInYears = paternal_age_at_birth,
+    mothersAgeAtConceptionInYears = maternal_age_at_birth,
+    familyNr = new_family_id
+  )
+
+autism1 <- dnmVarianceComponents::dnmDataAut
+autism2 <- dnmVarianceComponents::dnmDataAut2
+
+```
+
+
+Prepare the genomic regions to filter DNMs
+```{r}
+stopifnot(file.exists(here("data/master_repeat_file.bed.gz")))
+stopifnot(file.exists(here("data/recent_repeat_file.bed.gz")))
+
+uniqGenome <- 
+  import(here("data/master_repeat_file.bed.gz")) %>% 
+  gaps()
+seqlevelsStyle(uniqGenome) <- "UCSC"
+recRepGenome <- 
+  import(here("data/recent_repeat_file.bed.gz"))
+seqlevelsStyle(recRepGenome) <- "UCSC"
+ancientRepGenome <- setdiff(gaps(uniqGenome), recRepGenome)
+allGenome <- SeqinfoForUCSCGenome("hg19") %>% as("GRanges")
+
+```
+
+
+Define functions
+----------------
+
+For filtering DNMs
+```{r}
+filterMuts <- 
+  function(muts, ## needs columns "SampleID", Variant, Chr, Position
+           filter){
+    muts %>% 
+      makeGRangesFromDataFrame(seqnames.field = "Chr", 
+                               start.field = "Position", 
+                               end.field = "Position", 
+                               ignore.strand = TRUE, 
+                               keep.extra.columns = TRUE) %>% 
+      subsetByOverlaps(filter) %>%
+      as.data.frame() %>%
+      as.tibble() %>%
+      mutate(Chr=seqnames, Position=start)
+  }
+
+filterAndCalculate <- function(sasani, uniqGenome) {
+  filterMuts(sasani, uniqGenome) %>% 
+    group_by(SampleID, 
+             fathersAgeAtConceptionInYears, 
+             mothersAgeAtConceptionInYears, 
+             familyNr) %>% 
+    count() %>% 
+    calcRelativeVarCorsWithCi(withBatch = FALSE) %>%
+    filter(factor == "familyNr")
+}
+```
+
+For running the variance component estimations
+```{r}
+calcRelativeVarCorsWithCi <- function(dnms, 
+                                      withBatch=TRUE,
+                                      nsim = 500) {
+  if(withBatch) {
+    estim <-
+      rpt(n ~ fathersAgeAtConceptionInYears + mothersAgeAtConceptionInYears + (1|familyNr) + (1|batch),
+          data = dnms,
+          grname=c("familyNr", "batch", "Fixed", "Residual"),
+          nboot=nsim,
+          npermut = 0,
+          adjusted = FALSE,
+          datatype = "Gaussian",
+          parallel = TRUE)
+  } else {
+    estim <-
+      rpt(n ~ fathersAgeAtConceptionInYears + mothersAgeAtConceptionInYears + (1|familyNr),
+          data = dnms,
+          grname=c("familyNr", "Fixed", "Residual"),
+          nboot=nsim,
+          npermut = 0,
+          adjusted = FALSE,
+          datatype = "Gaussian",
+          parallel = TRUE)
+  }
+  res <- 
+    estim %>%
+    with(bind_cols(estimate=t(.$R), .$CI_emp %>% rownames_to_column())) %>% 
+    dplyr::rename(factor=rowname, 
+                  relVar.total=estimate, 
+                  lower.total=`2.5%`, 
+                  upper.total=`97.5%`)
+  return(res)
+}
+```
+
+
+
+Twins versus PAMUCs
+===================
+
+Function for formatting twin versus PAMUC data
+```{r}
+getTwins <- function(dnmData101) {
+  dnmData101 %>% 
+    add_count(familyNr) %>% 
+    filter(n==2) %>% 
+    group_by(familyNr) %>% 
+    do(mutate(., 
+              twins = (diff(fathersAgeAtConceptionInYears)==0) & (diff(mothersAgeAtConceptionInYears)==0))) %>% 
+    filter(twins) %>%
+    filter(familyNr != "101-306") %>% #weirdly annotated in 101 set
+    ungroup() %>%
+    dplyr::select(-twins)
+}
+
+getPamucs <- function(dnmData101, maxAgeDiff) {
+  twinFamilies <- 
+    dnmData101 %>% 
+    getTwins() %>%
+    pull(familyNr)
+  
+  dnmData101 %>%
+    filter(!(familyNr %in% twinFamilies)) %>%
+    arrange(fathersAgeAtConceptionInYears, mothersAgeAtConceptionInYears) %>% 
+    mutate(ageClusterNumber=
+             as.character(
+               cutree(
+                 hclust(dist(cbind(fathersAgeAtConceptionInYears, mothersAgeAtConceptionInYears), method = "manhattan")), 
+                 h=maxAgeDiff/365)))  %>% 
+    add_count(ageClusterNumber) %>%
+    filter(n==2)
+}
+
+assembleTwinsVsUnrelated <- 
+  function(dnmData101, maxAgeDiff) {
+    twins <- 
+      getTwins(dnmData101) %>% 
+      group_by(familyNr) %>%
+      nest() %>%
+      mutate(no.pairs=map_int(data, ~nrow(.))) %>%
+      filter(no.pairs==2) %>%
+      mutate(diff_n=map_int(data, ~max(abs(diff(.$no.DNMs)))),
+             set = "dizygote twins") %>% 
+      mutate(group = as.character(familyNr)) %>%
+      select(-familyNr)
+    
+    pamucs <- 
+      getPamucs(dnmData101, maxAgeDiff) %>% 
+      group_by(ageClusterNumber) %>%
+      nest() %>%
+      mutate(no.pairs=map_int(data, ~nrow(.))) %>%
+      filter(no.pairs==2) %>%
+      mutate(diff_n=map_int(data, ~max(abs(diff(.$no.DNMs)))),
+             set = "PAMUCs") %>% 
+      mutate(group = map_chr(data, ~do.call(paste, as.list(.$familyNr)))) %>%
+      select(-ageClusterNumber)
+    
+    bind_rows(
+      twins,
+      pamucs
+    )
+  }
+```
+
+Getting main data like in thesis version, except for applying filters for unique genome regions:
+```{r}
+maxAgeDiff <- 43
+
+twinsVsUnrelated <-
+  rbind(
+    assembleTwinsVsUnrelated(inova1 %>% 
+                               filterMuts(uniqGenome) %>%
+                               group_by(SampleID, 
+                                        fathersAgeAtConceptionInYears, 
+                                        mothersAgeAtConceptionInYears, 
+                                        familyNr) %>%
+                               count() %>% 
+                               dplyr::rename(no.DNMs = n) %>%
+                               ungroup(), 
+                             maxAgeDiff) %>% 
+      mutate(cohort="inova1"), 
+    assembleTwinsVsUnrelated(inova2 %>% 
+                               filterMuts(uniqGenome) %>% 
+                               group_by(SampleID, 
+                                        fathersAgeAtConceptionInYears, 
+                                        mothersAgeAtConceptionInYears, 
+                                        familyNr) %>%
+                               count() %>% 
+                               dplyr::rename(no.DNMs = n) %>%
+                               ungroup(), maxAgeDiff) %>% 
+      mutate(cohort="inova2"),
+    assembleTwinsVsUnrelated(sasani %>% 
+                               dplyr::select(-end) %>% 
+                               filterMuts(uniqGenome) %>% 
+                               group_by(SampleID, 
+                                        fathersAgeAtConceptionInYears, 
+                                        mothersAgeAtConceptionInYears, 
+                                        familyNr) %>%
+                               count() %>% 
+                               dplyr::rename(no.DNMs = n) %>%
+                               ungroup(), maxAgeDiff) %>% 
+      mutate(cohort="sasani"),
+    assembleTwinsVsUnrelated(autism1 %>% mutate(no.DNMs=unique_snv), maxAgeDiff) %>% 
+      mutate(cohort="autism1"),
+    assembleTwinsVsUnrelated(autism2 %>% mutate(no.DNMs=snvs_unique), maxAgeDiff) %>% 
+      mutate(cohort="autism2")
+    ) %>%
+  mutate(fatherAge=map_dbl(data, ~mean(.$fathersAgeAtConceptionInYears)))
+```
+
+Visualization of the data for all cohorts apart
+```{r}
+twinsVsUnrelated %>% 
+  filter(set=="dizygote twins") %>% 
+  mutate(fatherAge=map(data, ~.$fathersAgeAtConceptionInYears), no.DNMs=map(data, ~.$no.DNMs), group=seq_along(no.pairs)) %>% 
+  dplyr::select(-data) %>% 
+  unnest() %>% 
+  ggplot(aes(x=fatherAge, y=no.DNMs, group=group)) + 
+  geom_point(col="#008000") + 
+  geom_path(col="#008000") +
+  labs(x="Father's age at conception in years",
+       y="Dizygotic twins' no. DNMs") + 
+  facet_wrap(~cohort)
+
+twinsVsUnrelated %>% 
+  filter(set=="PAMUCs") %>% 
+  mutate(fatherAge=map(data, ~.$fathersAgeAtConceptionInYears), no.DNMs=map(data, ~.$no.DNMs), group=seq_along(no.pairs)) %>% 
+  dplyr::select(-data) %>% 
+  unnest() %>% 
+  ggplot(aes(x=fatherAge, y=no.DNMs, group=group)) + 
+  geom_point(col="#2b2b2b") + 
+  geom_path(col="#2b2b2b") +
+  labs(x="Father's age at conception in years",
+       y="PAMUCs' no. DNMs") + 
+  facet_wrap(~cohort)
+
+twinsVsUnrelated %>%
+  ggplot(aes(x=cohort, y=diff_n, col=set)) + 
+  geom_boxplot(outlier.colour = NA)  +
+  geom_beeswarm(cex=2, dodge.width = 0.8) +
+  scale_color_manual(values = c("PAMUCs"="#2b2b2b", "dizygote twins"="#008000"), 
+                     labels = c("PAMUCs"="PAMUCs", "dizygote twins"="Dizygotic twins")) + 
+  labs(x="", y="Difference in no. DNMs",
+       col="Set")
+
+```
+
+Tests
+-----
+
+First, are twin differences related to paternal age?
+```{r}
+# linear regression
+twinsVsUnrelated %>%
+  filter(set=="dizygote twins") %>%
+  dplyr::select(-data) %>% 
+  with(lm(diff_n~fatherAge)) %>% 
+  broom::tidy() %>% 
+  filter(term=="fatherAge") %>% 
+  pull(p.value)
+
+# heteroscedacity
+twinsVsUnrelated %>%
+  mutate(fatherAge=map_dbl(data, ~mean(.$fathersAgeAtConceptionInYears))) %>%
+  filter(set=="dizygote twins") %>%
+  dplyr::select(-data) %>%
+  lm(diff_n~fatherAge, data=.) %>%
+  lmtest::bptest() %>% 
+  with(.$p.value)
+```
+
+Second, are the twin differences of PAMUCs larger than of twins?
+```{r}
+twinsVsUnrelated %>% 
+  filter(cohort != "sasani") %>%
+  group_by(cohort) %>% 
+  do(with(.,
+          broom::tidy(wilcox.test(diff_n~set, 
+                                  alternative="less", 
+                                  exact=FALSE))))    # use a normal approximation, as there are ties in the data
+twinsVsUnrelated %>% 
+  filter(!(cohort %in% c("sasani", "autism1"))) %>% # we exclude 'autism1' in order to prevent the overlapping samples to be represented twice
+  with(.,broom::tidy(wilcox.test(diff_n~set, 
+                                 alternative="less", 
+                                 exact=FALSE)))
+```
+
+Third, are PAMUC differences related to paternal age?
+```{r}
+#linear regression
+twinsVsUnrelated %>%
+  mutate(fatherAge=map_dbl(data, ~mean(.$fathersAgeAtConceptionInYears))) %>% 
+  filter(set!="dizygote twins") %>%
+  dplyr::select(-data) %>% 
+  with(lm(diff_n~fatherAge)) %>% 
+  broom::tidy() %>% 
+  filter(term=="fatherAge") %>% 
+  pull(p.value)
+
+#heteroscedacity
+twinsVsUnrelated %>%
+  mutate(fatherAge=map_dbl(data, ~mean(.$fathersAgeAtConceptionInYears))) %>%
+  filter(set!="dizygote twins") %>%
+  dplyr::select(-data) %>%
+  lm(diff_n~fatherAge, data=.) %>%
+  lmtest::bptest() %>% 
+  with(.$p.value)
+
+```
+
+
