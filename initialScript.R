@@ -262,3 +262,31 @@ familyEstimates <-
 write_delim(familyEstimates,
             here("estimates.tsv"),
             delim = "\t")
+
+
+
+
+# ------------------------------
+
+# further notes
+
+mutWise <- 
+  sasani %>% 
+  dplyr::select(-end) %>% 
+  group_by(mut) %>% 
+  do(filterAndCalculate(., uniqGenome)) %>%
+  bind_cols(
+    sasani %>% 
+      dplyr::select(-end) %>% 
+      group_by(mut) %>% 
+      do(familyStats(., uniqGenome))
+  )
+
+ggplot(mutWise,
+       aes(x=mut, 
+           ymin=lower.total, 
+           ymax=upper.total, 
+           y=relVar.total,
+           alpha=no.muts.pp)) + 
+  geom_pointrange()
+
