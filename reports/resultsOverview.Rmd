@@ -28,6 +28,9 @@ library(inovaDNMs)
 library(inovaDNMs102)
 library(dnmVarianceComponents)
 library(ggbeeswarm)
+library(foreach)
+library(poissonMutSim)
+library(car)
 
 ```
 
@@ -474,5 +477,131 @@ ggplot(familyEstimates,
   facet_wrap(~region, ncol=1) +
   theme_bw()
 
+```
+
+
+
+Poisson model comparisons
+=========================
+
+Get the data in shape
+```{r}
+ageMdlFrameList <- 
+  list(
+    inova1 = inova1 %>% 
+  mutate(substitution = if_else(is.CpG, paste(substitution, "CpG"), as.character(substitution))) %>% 
+  group_by(SampleID, fathersAgeAtConceptionInYears, mothersAgeAtConceptionInYears, substitution) %>% 
+  count() %>% 
+  ungroup() %>% 
+  filter(!is.na(substitution)) %>%
+  complete(nesting(SampleID, 
+                   fathersAgeAtConceptionInYears, 
+                   mothersAgeAtConceptionInYears), 
+           substitution, 
+           fill = list(n=0)),
+  inova2 = inova2 %>% 
+  mutate(substitution = if_else(substitution == "C - T" & substr(surrounding,3,3) == "G", paste(substitution, "CpG"), as.character(substitution))) %>% 
+  group_by(SampleID, fathersAgeAtConceptionInYears, mothersAgeAtConceptionInYears, substitution) %>% 
+  count() %>% 
+  ungroup() %>% 
+  filter(!is.na(substitution)) %>%
+  complete(nesting(SampleID, 
+                   fathersAgeAtConceptionInYears, 
+                   mothersAgeAtConceptionInYears), 
+           substitution, 
+           fill = list(n=0)),
+  sasani = sasani %>% 
+  mutate(substitution = mut) %>% 
+  group_by(SampleID, fathersAgeAtConceptionInYears, mothersAgeAtConceptionInYears, substitution) %>% 
+  count() %>% 
+  ungroup() %>% 
+  filter(!is.na(substitution)) %>%
+  complete(nesting(SampleID, 
+                   fathersAgeAtConceptionInYears, 
+                   mothersAgeAtConceptionInYears), 
+           substitution, 
+           fill = list(n=0))
+  )
+
+mdls <- 
+  foreach(ageMdlFrame = ageMdlFrameList) %do% {
+    mdlList<- 
+      foreach(subs = unique(ageMdlFrame$substitution)) %do% {
+        glm(n ~ fathersAgeAtConceptionInYears + mothersAgeAtConceptionInYears, 
+            data=ageMdlFrame, 
+            family = poisson,
+            subset = substitution == subs)
+      }
+    names(mdlList) <- unique(ageMdlFrame$substitution)
+    return(mdlList)
+  }
+
+```
+
+
+calculate
+```{r}
+countFrameList <- 
+  foreach(n = 1:length(ageMdlFrameList)) %do% {
+    ageMdlFrame <- ageMdlFrameList[[n]]
+    mdlList <- mdls[[n]]
+    poisDens <- 
+      foreach(subs = unique(ageMdlFrame$substitution),
+              .combine = bind_rows) %do% {
+                tibble(
+                  no.muts = 0:75,
+                  dens = getDensitySums(subs, mdlFrame = ageMdlFrame, mdls = mdlList)/816,
+                  substitution = subs)
+              }
+    countFrame <- 
+      ageMdlFrame %>%
+      group_by(substitution) %>%
+      count(n) %>%
+      ungroup() %>% 
+      dplyr::rename(no.muts = n,
+                    observed = nn) %>%
+      full_join(poisDens %>%
+                  mutate(predicted = round(dens*816))%>% #rounding the estimates
+                  select(-dens), 
+                by = c("substitution", "no.muts"))
+    countFrame <- 
+      countFrame %>%
+      mutate(observed = if_else(is.na(observed), 0L, observed))
+    return(countFrame)
+  }
+```
+
+
+visualize
+```{r}
+foreach(countFrame = countFrameList) %do% {
+  ggplot(countFrame,
+       aes(x=no.muts)) +
+  geom_line(aes(y=predicted), col="red") + 
+  geom_point(aes(y=observed)) + 
+  facet_wrap(~substitution) + 
+  xlim(0, 40) + 
+  labs(y = "no.trios")
+}
+```
+
+
+```{r}
+comparisons <- 
+  foreach(countFrame = countFrameList,
+          .combine = bind_rows) %do% {
+            countFrame %>% 
+              tidyr::gather("set", "cases", 3:4) %>%
+              group_by(substitution) %>% 
+              group_modify(~data.frame(wilcox.p=wilcox.test(cases~set, data=.x)$p.value,    #test for difference in median
+                                       leveneTest(cases~factor(set), data=.x)$P[1],         #         heterogeneity of variance
+                                       fligner.p=fligner.test(cases~set, data=.x)$p.value,  #         heterogeneity of variance
+                                       ansari.p = ansari.test(cases~set, data=.x)$p.value,  #         difference in scale parameters
+                                       mood.p   =   mood.test(cases~set, data=.x)$p.value,  #         difference in scale parameters
+                                       f.p = var.test(no.muts~set, data=.x)$p.value))       #         compare the variances (parametric) 
+          }
+
+comparisons %>%
+  knitr::kable()
 ```
 
