@@ -593,10 +593,14 @@ comparisons <-
             countFrame %>% 
               tidyr::gather("set", "cases", 3:4) %>%
               group_by(substitution) %>% 
-              group_modify(~data.frame(wilcox.p=wilcox.test(cases~set, data=.x)$p.value,    #test for difference in median
+              group_modify(~data.frame(wilcox.p=coin::wilcox_test(cases~as.factor(set), data=.x) %>% 
+                                         coin::pvalue() %>% 
+                                         as.numeric(),                                      #test for difference in median
                                        leveneTest(cases~factor(set), data=.x)$P[1],         #         heterogeneity of variance
                                        fligner.p=fligner.test(cases~set, data=.x)$p.value,  #         heterogeneity of variance
-                                       ansari.p = ansari.test(cases~set, data=.x)$p.value,  #         difference in scale parameters
+                                       ansari.p = coin::ansari_test(cases~as.factor(set), data=.x) %>% 
+                                         coin::pvalue() %>% 
+                                         as.numeric(),                                      #         difference in scale parameters
                                        mood.p   =   mood.test(cases~set, data=.x)$p.value,  #         difference in scale parameters
                                        f.p = var.test(no.muts~set, data=.x)$p.value))       #         compare the variances (parametric) 
           }
