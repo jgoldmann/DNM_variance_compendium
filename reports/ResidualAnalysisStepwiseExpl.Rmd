@@ -1,0 +1,233 @@
+---
+title: "Residual analysis stepwise explanation"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(foreach)
+library(here)
+library(doParallel)
+
+library(rtracklayer)
+
+library(inovaDNMs)
+library(inovaDNMs102)
+library(dnmVarianceComponents)
+```
+
+
+Prepare inputs
+--------------
+
+Get data like in the other scripts:
+
+```{r}
+inova1 <- 
+  inovaDNMs::obs %>%
+  dplyr::rename(
+    SampleID = internalID,
+    Variant = Variant, 
+    Chr = Chromosome,
+    Position = Start.position)  %>%
+  full_join(inovaDNMs::trios %>% 
+              filter(in.data), 
+            by=c(SampleID = "Trio.ID")) %>%
+  dplyr::rename(familyNr = Family.Study.ID)
+
+inova2 <- 
+  inovaDNMs102::allDNMs %>%
+  dplyr::rename(
+    SampleID = sampleName,
+    Variant = alt, 
+    Chr = chrom,
+    Position = start) %>%
+  full_join(inovaDNMs102::trios, 
+            by=c(SampleID = "PROBANDID")) %>%
+  dplyr::rename(familyNr = FAMILYID) %>%
+  mutate(end = NULL)
+
+#sasani DNMs
+sasani <- 
+  read_delim("https://github.com/quinlan-lab/ceph-dnm-manuscript/raw/master/data/second_gen.dnms.txt",
+             delim = "\t",
+             col_types = cols(chrom = col_character(),
+                              new_family_id = col_character())) %>%
+  bind_rows(read_delim("https://github.com/quinlan-lab/ceph-dnm-manuscript/raw/master/data/third_gen.dnms.txt",
+                       delim = "\t",
+                       col_types = cols(chrom = col_character(),
+                                        new_family_id = col_character()))) %>%
+  bind_rows(read_delim("https://github.com/quinlan-lab/ceph-dnm-manuscript/raw/master/data/post-pgcs.dnms.txt",
+                       delim = "\t",
+                       col_types = cols(chrom = col_character(),
+                                        new_family_id = col_character()))) %>%
+  bind_rows(read_delim("https://github.com/quinlan-lab/ceph-dnm-manuscript/raw/master/data/gonosomal.dnms.txt",
+                       delim = "\t",
+                       col_types = cols(chrom = col_character(),
+                                        new_family_id = col_character()))) %>%
+  mutate(Chr = paste0("chr", chrom)) %>%
+  dplyr::rename(
+    SampleID = new_sample_id,
+    Variant = ref, 
+    Position = start,
+    fathersAgeAtConceptionInYears = paternal_age_at_birth,
+    mothersAgeAtConceptionInYears = maternal_age_at_birth,
+    familyNr = new_family_id
+  )
+
+autism1 <- dnmVarianceComponents::dnmDataAut
+autism2 <- dnmVarianceComponents::dnmDataAut2
+
+```
+
+Auxilliary function for filtering the data
+```{r}
+filterMuts <- 
+  function(muts, ## needs columns "SampleID", Variant, Chr, Position
+           filter){
+    muts %>% 
+      makeGRangesFromDataFrame(seqnames.field = "Chr", 
+                               start.field = "Position", 
+                               end.field = "Position", 
+                               ignore.strand = TRUE, 
+                               keep.extra.columns = TRUE) %>% 
+      subsetByOverlaps(filter) %>%
+      as.data.frame() %>%
+      as.tibble() %>%
+      mutate(Chr=seqnames, Position=start)
+  }
+```
+
+Definition of the unique genome sites
+```{r}
+uniqGenome <- 
+  import(here("data/master_repeat_file.bed.gz")) %>% 
+  gaps()
+```
+
+
+# Step-by-step approach to residual variance analysis
+
+
+Take the autism1 data:
+```{r}
+head(autism1)
+```
+
+First, apply a simple linear model to correct for both parent's age
+```{r}
+simpMod <- lm(unique_snv ~ fathersAgeAtConceptionInYears + mothersAgeAtConceptionInYears, autism1)
+
+ggplot(simpMod %>%
+         broom::augment(),
+       aes(x=fathersAgeAtConceptionInYears, y=unique_snv)) +
+  geom_point() +
+  geom_point(aes(y=.fitted), shape=1, alpha = .4) + 
+  geom_segment(aes(xend = fathersAgeAtConceptionInYears, yend = .fitted), 
+               alpha = .2) + 
+  theme_bw()
+```
+
+
+Let's highlight the resiudals of the first family in the dataset
+
+```{r}
+ggplot(simpMod %>%
+         broom::augment() %>%
+         mutate(highlight = autism1$familyNr=="11006"),
+       aes(x=fathersAgeAtConceptionInYears, y=unique_snv, alpha=highlight)) +
+  geom_point(aes(col = highlight)) +
+  geom_point(aes(y=.fitted), shape=1) + 
+  geom_segment(aes(xend = fathersAgeAtConceptionInYears, yend = .fitted, col = highlight, size=highlight)) + 
+  theme_bw() + 
+  scale_color_manual(values = c("TRUE"="red", "FALSE"="black")) + 
+  scale_alpha_manual(values = c("TRUE"=1, "FALSE"=0.2)) +
+  scale_size_manual(values = c("TRUE"=1.5, "FALSE"=0.1)) 
+
+```
+
+
+The residuals of this family are both above and below zero.
+
+```{r}
+simpMod %>%
+    broom::augment() %>%
+    mutate(highlight = autism1$familyNr=="11006") %>% 
+  ggplot(aes(x=.resid)) + 
+  geom_density() + 
+  geom_vline(xintercept=0) + 
+  theme_bw() + 
+  geom_vline(xintercept=residuals(simpMod)[autism1$familyNr=="11006"], 
+             col = "red")
+```
+
+
+In a scenario of mutations perfectly explained by parent's age and by family membership, the residuals of family members would very close to each other:
+```{r}
+set.seed(123)
+simulatedData <- 
+  tibble(   #simulate parents, family effects and first children
+    fathersAge = seq(from = 20, to = 45, length.out = 50),
+    mothersAge = fathersAge + rnorm(50, mean = -1, sd = 3),
+    family = paste("I", 1:50, sep=""),
+    child = paste(family, "-1", sep= ""),
+    familyEffect = round(rnorm(50, mean = 0, sd = 5)),
+    no.muts = round(fathersAge + 0.25*mothersAge + familyEffect)
+  )
+simulatedData <- 
+  simulatedData %>%
+  bind_rows(
+    tibble(
+      fathersAge = simulatedData$fathersAge + 2,
+      mothersAge = simulatedData$mothersAge + 2,
+      family = simulatedData$family,
+      child = paste(simulatedData$family, "-2", sep= ""),
+      familyEffect = simulatedData$familyEffect,
+      no.muts = round(fathersAge + 0.25*mothersAge + familyEffect)
+    )
+  )
+
+simpModSim <- lm(no.muts ~ fathersAge + mothersAge, simulatedData)
+
+simpModSim %>%
+    broom::augment() %>%
+    mutate(highlight = simulatedData$family=="I1") %>% 
+  ggplot(aes(x=.resid)) + 
+  geom_density() + 
+  geom_vline(xintercept=0) + 
+  theme_bw() + 
+  geom_vline(xintercept=residuals(simpModSim)[simulatedData$family=="I1"], 
+             col = "red")
+```
+
+
+Are the residuals of family members more similar to each other than among
+
+
+
+```{r}
+data(diamonds)
+set.seed(123)
+small_n = sample_n(diamonds, 10, replace = TRUE)
+small_n = select(small_n, price, carat)
+
+fit <- lm(price~carat, small_n)
+fit %>%
+  broom::augment() %>%
+  mutate(highlight = .resid>500) %>%
+  ggplot(aes(x=carat, y=price)) + 
+  geom_smooth(method=lm, se=FALSE) + 
+  geom_segment(aes(xend = carat, yend = .fitted, color=highlight)) +
+  geom_point(aes(color=highlight)) +
+  geom_point(aes(y=.fitted), shape=1) + 
+  scale_color_discrete(guide=FALSE)
+
+
+```
+
+
+

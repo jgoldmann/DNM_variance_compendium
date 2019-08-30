@@ -12,6 +12,7 @@ library(ggbeeswarm)
 library(foreach)
 library(poissonMutSim)
 library(car)
+library(doParallel)
 
 
 inova1 <- 
@@ -104,8 +105,8 @@ ggplot(data.frame(simulations=sim),
 (table(obs <= sim)/10000)["FALSE"]  #81% of bootstrapped results have a lower deviance
 
 
-
-compareFamilyRSS <- function(autism1) {
+registerDoParallel(cores=7)
+compareFamilyRSS <- function(autism1, n=1000) {
   simpMod <- lm(n ~ fathersAgeAtConceptionInYears + mothersAgeAtConceptionInYears, autism1)
   obs <- 
     autism1 %>%
@@ -113,14 +114,15 @@ compareFamilyRSS <- function(autism1) {
     lm(resi~familyNr, data=.) %>% 
     deviance()
   sim <- 
-    foreach(1:10000,
-            .combine = c) %do% {
+    foreach(1:n,
+            .combine = c,
+            .packages = c("tidyverse")) %dopar% {
               autism1 %>%
                 mutate(resi = sample(residuals(simpMod))) %>%
                 lm(resi~familyNr, data=.) %>% 
                 deviance()
             }
-  (table(obs <= sim)/10000)["FALSE"]
+  (table(obs <= sim)/n)["FALSE"]
 }
 
 filterMuts(inova1, uniqGenome) %>% 
@@ -139,7 +141,7 @@ filterMuts(inova2, uniqGenome) %>%
            familyNr) %>% 
   count() %>%
   ungroup() %>% 
-  compareFamilyRSS()
+  compareFamilyRSS() #0.2967
 
 filterMuts(sasani %>% dplyr::select(-end), uniqGenome) %>% 
   group_by(SampleID, 
@@ -150,5 +152,17 @@ filterMuts(sasani %>% dplyr::select(-end), uniqGenome) %>%
   ungroup() %>% 
   compareFamilyRSS() #0.1286
 
-compareFamilyRSS(autism1 %>% mutate(n=unique_snv))
-compareFamilyRSS(autism2 %>% mutate(n=snvs_unique))
+compareFamilyRSS(autism1 %>% mutate(n=unique_snv)) #0.7951
+compareFamilyRSS(autism2 %>% mutate(n=snvs_unique)) #0.0151
+
+
+
+
+
+#TODO:
+# - missing here: filterMuts(), uniqGenome
+# - 
+
+
+
+
