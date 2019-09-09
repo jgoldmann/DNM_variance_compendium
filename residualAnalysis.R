@@ -158,11 +158,76 @@ compareFamilyRSS(autism2 %>% mutate(n=snvs_unique)) #0.0151
 
 
 
-
-#TODO:
-# - missing here: filterMuts(), uniqGenome
-# - 
+# other readout from simulations: are the deltas of residuals per family the same?
 
 
 
+registerDoParallel(cores=7)
 
+
+compareFamilyResidualDeltas <- function(autism1, n=1000) {
+  simpMod <- lm(n ~ fathersAgeAtConceptionInYears + mothersAgeAtConceptionInYears, autism1)
+  obs <- 
+    autism1 %>%
+    mutate(resi = residuals(simpMod)) %>%
+    group_by(familyNr) %>% 
+    nest() %>% 
+    mutate(no.offspring = map_dbl(.$data, nrow)) %>% 
+    filter(no.offspring == 2) %>% 
+    mutate(delta = map_dbl(.$data, ~abs(diff(.$resi)))) %>%
+    dplyr::select(-data, -no.offspring) %>%
+    mutate(set="observed")
+  sim <- 
+    foreach(1:n,
+            .combine = bind_rows,
+            .packages = c("tidyverse")) %dopar% {
+              autism1 %>%
+                mutate(resi = sample(residuals(simpMod))) %>%
+                group_by(familyNr) %>% 
+                nest() %>% 
+                mutate(no.offspring = map_dbl(.$data, nrow)) %>% 
+                filter(no.offspring == 2) %>% 
+                mutate(delta = map_dbl(.$data, ~abs(diff(.$resi)))) %>%
+                dplyr::select(-data, -no.offspring) %>%
+                mutate(set="simulated")
+            }
+  simObs <- bind_rows(obs, sim)
+  #ggplot(simObs,
+  #     aes(x=delta,
+  #         col=set)) + 
+  #geom_density()
+  c(
+    t.test(delta ~ set, simObs)$p.value,
+    wilcox.test(delta ~ set, simObs)$p.value
+  )
+}
+
+compareFamilyResidualDeltas(autism1 %>% mutate(n=unique_snv)) #0.73
+compareFamilyResidualDeltas(autism2 %>% mutate(n=snvs_unique)) #0.11
+
+filterMuts(inova1, uniqGenome) %>% #0.41
+  group_by(SampleID, 
+           fathersAgeAtConceptionInYears, 
+           mothersAgeAtConceptionInYears, 
+           familyNr) %>% 
+  dplyr::count() %>%
+  ungroup() %>% 
+  compareFamilyResidualDeltas()
+
+filterMuts(inova2, uniqGenome) %>% #0.34
+  group_by(SampleID, 
+           fathersAgeAtConceptionInYears, 
+           mothersAgeAtConceptionInYears, 
+           familyNr) %>% 
+  dplyr::count() %>%
+  ungroup() %>% 
+  compareFamilyResidualDeltas()
+
+filterMuts(sasani %>% dplyr::select(-end), uniqGenome) %>% 
+  group_by(SampleID, 
+           fathersAgeAtConceptionInYears, 
+           mothersAgeAtConceptionInYears, 
+           familyNr) %>% 
+  dplyr::count() %>%
+  ungroup() %>% 
+  compareFamilyResidualDeltas()
