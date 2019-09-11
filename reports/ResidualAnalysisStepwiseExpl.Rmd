@@ -107,6 +107,7 @@ Definition of the unique genome sites
 uniqGenome <- 
   import(here("data/master_repeat_file.bed.gz")) %>% 
   gaps()
+seqlevelsStyle(uniqGenome) <- "UCSC"
 ```
 
 
@@ -129,7 +130,8 @@ ggplot(simpMod %>%
   geom_point(aes(y=.fitted), shape=1, alpha = .4) + 
   geom_segment(aes(xend = fathersAgeAtConceptionInYears, yend = .fitted), 
                alpha = .2) + 
-  theme_bw()
+  theme_bw() + 
+  ggtitle("Regression for parental ages")
 ```
 
 
@@ -146,7 +148,8 @@ ggplot(simpMod %>%
   theme_bw() + 
   scale_color_manual(values = c("TRUE"="red", "FALSE"="black")) + 
   scale_alpha_manual(values = c("TRUE"=1, "FALSE"=0.2)) +
-  scale_size_manual(values = c("TRUE"=1.5, "FALSE"=0.1)) 
+  scale_size_manual(values = c("TRUE"=1.5, "FALSE"=0.1)) +
+  ggtitle("One family's offspring")
 
 ```
 
@@ -162,7 +165,8 @@ simpMod %>%
   geom_vline(xintercept=0) + 
   theme_bw() + 
   geom_vline(xintercept=residuals(simpMod)[autism1$familyNr=="11006"], 
-             col = "red")
+             col = "red") +
+  ggtitle("Residuals of one family's offspring")
 ```
 
 
@@ -201,33 +205,74 @@ simpModSim %>%
   geom_vline(xintercept=0) + 
   theme_bw() + 
   geom_vline(xintercept=residuals(simpModSim)[simulatedData$family=="I1"], 
-             col = "red")
+             col = "red") + 
+  ggtitle("Theoretical distribution of one family's residuals if the family effect was pronounced")
 ```
 
 
-Are the residuals of family members more similar to each other than among
 
+Are the observed residuals of family members more similar to each other than expected? In order to find out, we can compare it to the distribution of residuals from the same dataset with randomized family labels:
 
 
 ```{r}
-data(diamonds)
-set.seed(123)
-small_n = sample_n(diamonds, 10, replace = TRUE)
-small_n = select(small_n, price, carat)
+compareFamilyResidualDeltas <- function(autism1, n=1000) {
+  simpMod <- lm(n ~ fathersAgeAtConceptionInYears + mothersAgeAtConceptionInYears, autism1)
+  obs <- 
+    autism1 %>%
+    mutate(resi = residuals(simpMod)) %>%
+    group_by(familyNr) %>% 
+    nest() %>% 
+    mutate(no.offspring = map_dbl(.$data, nrow)) %>% 
+    filter(no.offspring == 2) %>% 
+    mutate(delta = map_dbl(.$data, ~abs(diff(.$resi)))) %>%
+    dplyr::select(-data, -no.offspring) %>%
+    mutate(set="observed")
+  sim <- 
+    foreach(1:n,
+            .combine = bind_rows,
+            .packages = c("tidyverse")) %dopar% {
+              autism1 %>%
+                mutate(resi = sample(residuals(simpMod))) %>%
+                group_by(familyNr) %>% 
+                nest() %>% 
+                mutate(no.offspring = map_dbl(.$data, nrow)) %>% 
+                filter(no.offspring == 2) %>% 
+                mutate(delta = map_dbl(.$data, ~abs(diff(.$resi)))) %>%
+                dplyr::select(-data, -no.offspring) %>%
+                mutate(set="simulated")
+            }
+  simObs <- bind_rows(obs, sim)
+  wilcox.test(delta ~ set, simObs)$p.value
+}
 
-fit <- lm(price~carat, small_n)
-fit %>%
-  broom::augment() %>%
-  mutate(highlight = .resid>500) %>%
-  ggplot(aes(x=carat, y=price)) + 
-  geom_smooth(method=lm, se=FALSE) + 
-  geom_segment(aes(xend = carat, yend = .fitted, color=highlight)) +
-  geom_point(aes(color=highlight)) +
-  geom_point(aes(y=.fitted), shape=1) + 
-  scale_color_discrete(guide=FALSE)
-
-
+compareFamilyResidualDeltas(autism1 %>% mutate(n=unique_snv))
 ```
 
+There is no significant difference between the observed distribution and a simulated one. This implies that the residuals inside of families are not significantly closer to each other than any two random residuals. Thus the presumed family effects are not large.
+
+This analysis can also be applied to the other datasets:
+
+```{r}
+compareFamilyResidualDeltas(autism2 %>% mutate(n=snvs_unique)) #0.11
+
+filterMuts(inova1, uniqGenome) %>% #0.41
+  group_by(SampleID, 
+           fathersAgeAtConceptionInYears, 
+           mothersAgeAtConceptionInYears, 
+           familyNr) %>% 
+  dplyr::count() %>%
+  ungroup() %>% 
+  compareFamilyResidualDeltas()
+
+filterMuts(inova2, uniqGenome) %>% #0.34
+  group_by(SampleID, 
+           fathersAgeAtConceptionInYears, 
+           mothersAgeAtConceptionInYears, 
+           familyNr) %>% 
+  dplyr::count() %>%
+  ungroup() %>% 
+  compareFamilyResidualDeltas()
+
+```
 
 

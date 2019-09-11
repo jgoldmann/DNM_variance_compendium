@@ -223,11 +223,4 @@ filterMuts(inova2, uniqGenome) %>% #0.34
   ungroup() %>% 
   compareFamilyResidualDeltas()
 
-filterMuts(sasani %>% dplyr::select(-end), uniqGenome) %>% 
-  group_by(SampleID, 
-           fathersAgeAtConceptionInYears, 
-           mothersAgeAtConceptionInYears, 
-           familyNr) %>% 
-  dplyr::count() %>%
-  ungroup() %>% 
-  compareFamilyResidualDeltas()
+
