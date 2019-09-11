@@ -18,6 +18,8 @@ library(rtracklayer)
 library(inovaDNMs)
 library(inovaDNMs102)
 library(dnmVarianceComponents)
+
+set.seed(321)
 ```
 
 
@@ -242,10 +244,10 @@ compareFamilyResidualDeltas <- function(autism1, n=1000) {
                 mutate(set="simulated")
             }
   simObs <- bind_rows(obs, sim)
-  wilcox.test(delta ~ set, simObs)$p.value
 }
 
-compareFamilyResidualDeltas(autism1 %>% mutate(n=unique_snv))
+compareFamilyResidualDeltas(autism1 %>% mutate(n=unique_snv)) %>%
+  with(wilcox.test(delta ~ set))
 ```
 
 There is no significant difference between the observed distribution and a simulated one. This implies that the residuals inside of families are not significantly closer to each other than any two random residuals. Thus the presumed family effects are not large.
@@ -253,26 +255,67 @@ There is no significant difference between the observed distribution and a simul
 This analysis can also be applied to the other datasets:
 
 ```{r}
-compareFamilyResidualDeltas(autism2 %>% mutate(n=snvs_unique)) #0.11
+compareFamilyResidualDeltas(autism2 %>% mutate(n=snvs_unique))  %>%
+  with(wilcox.test(delta ~ set))
 
-filterMuts(inova1, uniqGenome) %>% #0.41
+filterMuts(inova1, uniqGenome) %>% 
   group_by(SampleID, 
            fathersAgeAtConceptionInYears, 
            mothersAgeAtConceptionInYears, 
            familyNr) %>% 
   dplyr::count() %>%
   ungroup() %>% 
-  compareFamilyResidualDeltas()
+  compareFamilyResidualDeltas()   %>%
+  with(wilcox.test(delta ~ set))
 
-filterMuts(inova2, uniqGenome) %>% #0.34
+filterMuts(inova2, uniqGenome) %>% 
   group_by(SampleID, 
            fathersAgeAtConceptionInYears, 
            mothersAgeAtConceptionInYears, 
            familyNr) %>% 
   dplyr::count() %>%
   ungroup() %>% 
-  compareFamilyResidualDeltas()
+  compareFamilyResidualDeltas()  %>%
+  with(wilcox.test(delta ~ set))
 
+```
+
+
+Also for an aggregation of all residuals the p-value is not below 0.05.
+
+```{r}
+agg_res <-
+  bind_rows(
+    #no autism1 in order to not count single samples twice
+    compareFamilyResidualDeltas(autism2 %>% mutate(n=snvs_unique) %>% mutate(familyNr = as.character(familyNr))) %>%
+      mutate(dataset = "autism2"),
+    filterMuts(inova1, uniqGenome) %>% #0.41
+      group_by(SampleID, 
+               fathersAgeAtConceptionInYears, 
+               mothersAgeAtConceptionInYears, 
+               familyNr) %>% 
+      dplyr::count() %>%
+      ungroup() %>% 
+      compareFamilyResidualDeltas() %>%
+      mutate(dataset = "inova1"),
+    filterMuts(inova2, uniqGenome) %>% 
+      group_by(SampleID, 
+               fathersAgeAtConceptionInYears, 
+               mothersAgeAtConceptionInYears, 
+               familyNr) %>% 
+      dplyr::count() %>%
+      ungroup() %>% 
+      compareFamilyResidualDeltas() %>%
+      mutate(dataset = "inova2")
+  )
+
+ggplot(agg_res, aes(x=dataset, y=delta, group=paste(dataset, set))) +
+  geom_violin(aes(fill=set)) + 
+  geom_boxplot(fill=NA) + 
+  theme_bw()
+
+agg_res %>% 
+  with(wilcox.test(delta ~ set))
 ```
 
 
