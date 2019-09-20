@@ -61,7 +61,9 @@ inova2 <-
   full_join(inovaDNMs102::trios, 
             by=c(SampleID = "PROBANDID")) %>%
   dplyr::rename(familyNr = FAMILYID) %>%
-  mutate(end = NULL)
+  mutate(end = NULL) %>% 
+  left_join(inovaDNMs102::siblings, by=c("familyNr"="FAMILYID")) %>%
+  mutate(familyNr = if_else(mode=="siblings" & !is.na(mode), SiblingPairId, familyNr))
 
 #sasani DNMs
 sasani <- 
@@ -299,6 +301,20 @@ twinsVsUnrelated %>%
 
 ```
 
+Numbers
+-------
+
+```{r}
+twinsVsUnrelated %>% 
+  group_by(set, cohort) %>% 
+  summarize(medDiff=median(diff_n), 
+            mx=max(diff_n), 
+            mn=min(diff_n))
+twinsVsUnrelated %>% 
+  group_by(set, cohort) %>% 
+  count()
+```
+
 Tests
 -----
 
@@ -333,7 +349,7 @@ twinsVsUnrelated %>%
                                   alternative="less", 
                                   exact=FALSE))))    # use a normal approximation, as there are ties in the data
 twinsVsUnrelated %>% 
-  filter(!(cohort %in% c("sasani", "autism1"))) %>% # we exclude 'autism1' in order to prevent the overlapping samples to be represented twice
+  filter(!(cohort %in% c("sasani", "autism1"))) %>% 
   with(.,broom::tidy(wilcox.test(diff_n~set, 
                                  alternative="less", 
                                  exact=FALSE)))
@@ -362,6 +378,107 @@ twinsVsUnrelated %>%
 
 ```
 
+
+Residual analysis
+=================
+
+```{r}
+compareFamilyResidualDeltas <- function(autism1, n=1000) {
+  simpMod <- lm(n ~ fathersAgeAtConceptionInYears + mothersAgeAtConceptionInYears, autism1)
+  obs <- 
+    autism1 %>%
+    mutate(resi = residuals(simpMod)) %>%
+    group_by(familyNr) %>% 
+    nest() %>% 
+    mutate(no.offspring = map_dbl(.$data, nrow)) %>% 
+    filter(no.offspring == 2) %>% 
+    mutate(delta = map_dbl(.$data, ~abs(diff(.$resi)))) %>%
+    dplyr::select(-data, -no.offspring) %>%
+    mutate(set="observed")
+  sim <- 
+    foreach(1:n,
+            .combine = bind_rows,
+            .packages = c("tidyverse")) %dopar% {
+              autism1 %>%
+                mutate(resi = sample(residuals(simpMod))) %>%
+                group_by(familyNr) %>% 
+                nest() %>% 
+                mutate(no.offspring = map_dbl(.$data, nrow)) %>% 
+                filter(no.offspring == 2) %>% 
+                mutate(delta = map_dbl(.$data, ~abs(diff(.$resi)))) %>%
+                dplyr::select(-data, -no.offspring) %>%
+                mutate(set="simulated")
+            }
+  simObs <- bind_rows(obs, sim)
+}
+```
+
+
+```{r}
+doParallel::registerDoParallel(cores=7)
+
+filterMuts(inova1, uniqGenome) %>% 
+  group_by(SampleID, 
+           fathersAgeAtConceptionInYears, 
+           mothersAgeAtConceptionInYears, 
+           familyNr) %>% 
+  dplyr::count() %>%
+  ungroup() %>% 
+  compareFamilyResidualDeltas()   %>%
+  with(wilcox.test(delta ~ set))
+
+filterMuts(inova2, uniqGenome) %>% 
+  group_by(SampleID, 
+           fathersAgeAtConceptionInYears, 
+           mothersAgeAtConceptionInYears, 
+           familyNr) %>% 
+  dplyr::count() %>%
+  ungroup() %>% 
+  compareFamilyResidualDeltas()  %>%
+  with(wilcox.test(delta ~ set))
+
+compareFamilyResidualDeltas(autism1 %>% mutate(n=unique_snv)) %>%
+  with(wilcox.test(delta ~ set))
+compareFamilyResidualDeltas(autism2 %>% mutate(n=snvs_unique))  %>%
+  with(wilcox.test(delta ~ set))
+
+```
+
+```{r}
+agg_res <-
+  bind_rows(
+    compareFamilyResidualDeltas(autism1 %>% mutate(n=unique_snv)) %>%
+  with(wilcox.test(delta ~ set)),
+    compareFamilyResidualDeltas(autism2 %>% mutate(n=snvs_unique) %>% mutate(familyNr = as.character(familyNr))) %>%
+      mutate(dataset = "autism2"),
+    filterMuts(inova1, uniqGenome) %>% #0.41
+      group_by(SampleID, 
+               fathersAgeAtConceptionInYears, 
+               mothersAgeAtConceptionInYears, 
+               familyNr) %>% 
+      dplyr::count() %>%
+      ungroup() %>% 
+      compareFamilyResidualDeltas() %>%
+      mutate(dataset = "inova1"),
+    filterMuts(inova2, uniqGenome) %>% 
+      group_by(SampleID, 
+               fathersAgeAtConceptionInYears, 
+               mothersAgeAtConceptionInYears, 
+               familyNr) %>% 
+      dplyr::count() %>%
+      ungroup() %>% 
+      compareFamilyResidualDeltas() %>%
+      mutate(dataset = "inova2")
+  )
+
+ggplot(agg_res, aes(x=dataset, y=delta, group=paste(dataset, set))) +
+  geom_violin(aes(fill=set)) + 
+  geom_boxplot(fill=NA) + 
+  theme_bw()
+
+agg_res %>% 
+  with(wilcox.test(delta ~ set))
+```
 
 
 Variance component estimations
@@ -550,7 +667,7 @@ countFrameList <-
               .combine = bind_rows) %do% {
                 tibble(
                   no.muts = 0:75,
-                  dens = getDensitySums(subs, mdlFrame = ageMdlFrame, mdls = mdlList)/816,
+                  dens = getDensitySums(subs, mdlFrame = ageMdlFrame, mdls = mdlList)/816, #TODO is this right??
                   substitution = subs)
               }
     countFrame <- 
