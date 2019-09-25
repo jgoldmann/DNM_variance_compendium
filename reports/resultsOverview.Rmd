@@ -49,7 +49,12 @@ inova1 <-
   full_join(inovaDNMs::trios %>% 
               filter(in.data), 
             by=c(SampleID = "Trio.ID")) %>%
-  dplyr::rename(familyNr = Family.Study.ID)
+  dplyr::rename(familyNr = Family.Study.ID) %>%
+  mutate(familyNr = if_else(familyNr %in% c("101-112", "101-689"), "101-112/101-689", familyNr)) %>% # properly label sibling pair (see Wendy's mail 2nd oct 2016)
+  mutate(PROBANDID=paste0(SampleID, "-03")) %>%
+  left_join(inovaDNMs::seqReactions[,c("software", "name")] %>%
+              mutate(batch = substr(software, 1,6)),
+            by=c(Proband.Study.ID="name"))
 
 inova2 <- 
   inovaDNMs102::allDNMs %>%
@@ -62,8 +67,16 @@ inova2 <-
             by=c(SampleID = "PROBANDID")) %>%
   dplyr::rename(familyNr = FAMILYID) %>%
   mutate(end = NULL) %>% 
-  left_join(inovaDNMs102::siblings, by=c("familyNr"="FAMILYID")) %>%
-  mutate(familyNr = if_else(mode=="siblings" & !is.na(mode), SiblingPairId, familyNr))
+  left_join(inovaDNMs102::siblings %>% 
+              filter(!SiblingPairId == "Fam12" & !SiblingPairId == "Sib14") %>% #clean incomplete families
+              dplyr::select(-PROBANDID) %>% #drop double entries
+              distinct(), 
+            by=c("familyNr"="FAMILYID")) %>%
+  mutate(familyNr = if_else(mode=="siblings" & !is.na(mode), SiblingPairId, familyNr)) %>% 
+  left_join(inovaDNMs102::qcStats %>%
+              dplyr::select(pipeline, STUDY_ID) %>%
+              mutate(STUDY_ID=toupper(STUDY_ID), batch=pipeline),
+            by=c(SampleID="STUDY_ID"))
 
 #sasani DNMs
 sasani <- 
@@ -137,15 +150,27 @@ filterMuts <-
       mutate(Chr=seqnames, Position=start)
   }
 
-filterAndCalculate <- function(sasani, uniqGenome) {
-  filterMuts(sasani, uniqGenome) %>% 
+filterAndCalculate <- function(sasani, uniqGenome, withBatch = FALSE) {
+  if(withBatch) {
+    filterMuts(sasani, uniqGenome) %>% 
     group_by(SampleID, 
              fathersAgeAtConceptionInYears, 
              mothersAgeAtConceptionInYears, 
-             familyNr) %>% 
-    count() %>% 
-    calcRelativeVarCorsWithCi(withBatch = FALSE) %>%
-    filter(factor == "familyNr")
+             familyNr,
+             batch) %>% 
+      count() %>% 
+      calcRelativeVarCorsWithCi(withBatch = TRUE) %>%
+      filter(factor == "familyNr")
+  } else {
+    filterMuts(sasani, uniqGenome) %>% 
+      group_by(SampleID, 
+               fathersAgeAtConceptionInYears, 
+               mothersAgeAtConceptionInYears, 
+               familyNr) %>% 
+      count() %>% 
+      calcRelativeVarCorsWithCi(withBatch = FALSE) %>%
+      filter(factor == "familyNr")
+  }
 }
 ```
 
@@ -554,21 +579,22 @@ Doing the calculations
 ```{r}
 familyEstimates <-
   bind_rows(
-    filterAndCalculate(inova1, uniqGenome),
-    filterAndCalculate(inova2, uniqGenome),
+    filterAndCalculate(inova1, uniqGenome, withBatch = TRUE),
+    filterAndCalculate(inova2, uniqGenome, withBatch = TRUE),
     filterAndCalculate(sasani %>% dplyr::select(-end), uniqGenome),
     calcRelativeVarCorsWithCi(
       autism1 %>% 
         mutate(n = unique_snv), 
-      withBatch = FALSE) %>%
+      withBatch = TRUE) %>%
       filter(factor == "familyNr"),
     calcRelativeVarCorsWithCi(
       autism2 %>% 
         mutate(n = snvs_unique), 
-      withBatch = FALSE)  %>%
+      withBatch = TRUE)  %>%
       filter(factor == "familyNr")
   ) %>%
-  mutate(set = rep(c("inova1", "inova2", "sasani", "autism1", "autism2"))) %>%
+  mutate(set = rep(c("inova1", "inova2", "sasani", "autism1", "autism2")),
+         includesBatch = c(TRUE, TRUE, FALSE, TRUE, TRUE)) %>%
   mutate(region = c(rep("unique", 5))) %>%
   bind_cols(
     bind_rows(
