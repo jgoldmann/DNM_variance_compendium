@@ -472,8 +472,8 @@ compareFamilyResidualDeltas(autism2 %>% mutate(n=snvs_unique))  %>%
 ```{r}
 agg_res <-
   bind_rows(
-    compareFamilyResidualDeltas(autism1 %>% mutate(n=unique_snv)) %>%
-  with(wilcox.test(delta ~ set)),
+    compareFamilyResidualDeltas(autism1 %>% mutate(n=unique_snv) %>% mutate(familyNr = as.character(familyNr))) %>%
+      mutate(dataset = "autism1"),
     compareFamilyResidualDeltas(autism2 %>% mutate(n=snvs_unique) %>% mutate(familyNr = as.character(familyNr))) %>%
       mutate(dataset = "autism2"),
     filterMuts(inova1, uniqGenome) %>% #0.41
@@ -623,47 +623,161 @@ ggplot(familyEstimates,
 ```
 
 
+Weighted results
+```{r}
+wMeanEstimate <- weighted.mean(
+  x=familyEstimates$relVar.total,
+  w=familyEstimates$no.familys
+)
+
+wSdEstimate <- Hmisc::wtd.var(
+  x=familyEstimates$relVar.total,
+  w=familyEstimates$no.familys
+) %>% sqrt()
+
+wMeanEstimate
+wMeanEstimate + wSdEstimate * c(-1.96,1.96)
+```
+
+
 
 Poisson model comparisons
 =========================
+
+
+First, on all substitutions
+```{r}
+ageMdlFrameList <- 
+  list(
+    inova1 = inova1 %>% 
+      filterMuts(uniqGenome) %>%
+      group_by(SampleID, fathersAgeAtConceptionInYears, mothersAgeAtConceptionInYears) %>% 
+      count() %>% 
+      ungroup() %>% 
+      complete(nesting(SampleID, 
+                       fathersAgeAtConceptionInYears, 
+                       mothersAgeAtConceptionInYears),
+               fill = list(n=0)),
+    inova2 = inova2 %>% 
+      filterMuts(uniqGenome) %>%
+      group_by(SampleID, fathersAgeAtConceptionInYears, mothersAgeAtConceptionInYears) %>% 
+      count() %>% 
+      ungroup() %>% 
+      complete(nesting(SampleID, 
+                       fathersAgeAtConceptionInYears, 
+                       mothersAgeAtConceptionInYears), 
+               fill = list(n=0)),
+    sasani = sasani %>% 
+      dplyr::select(-end) %>% 
+      filterMuts(uniqGenome) %>%
+      group_by(SampleID, fathersAgeAtConceptionInYears, mothersAgeAtConceptionInYears) %>% 
+      count() %>% 
+      ungroup() %>% 
+      complete(nesting(SampleID, 
+                       fathersAgeAtConceptionInYears, 
+                       mothersAgeAtConceptionInYears), 
+               fill = list(n=0))
+  )
+
+
+mdls <- 
+  foreach(ageMdlFrame = ageMdlFrameList) %do% {
+    glm(n ~ fathersAgeAtConceptionInYears + mothersAgeAtConceptionInYears, 
+            data=ageMdlFrame, 
+            family = poisson)
+  }
+
+countFrameList <- 
+  foreach(n = 1:length(ageMdlFrameList)) %do% {
+    ageMdlFrame <- ageMdlFrameList[[n]]
+    mdlList <- mdls[[n]]
+    poisDens <- 
+      tibble(
+        no.muts = 0:75,
+        dens = getDensitySum(mdlFrame = ageMdlFrame, mdl = mdlList))
+    countFrame <- 
+      ageMdlFrame %>%
+      count(n) %>%
+      ungroup() %>% 
+      dplyr::rename(no.muts = n,
+                    observed = nn) %>%
+      full_join(poisDens %>%
+                  mutate(predicted = round(dens))%>% #rounding the estimates
+                  select(-dens), 
+                by = c("no.muts"))
+    countFrame <- 
+      countFrame %>%
+      mutate(observed = if_else(is.na(observed), 0L, observed))
+    return(countFrame)
+  }
+
+comparisons <- 
+  foreach(countFrame = countFrameList,
+          .combine = bind_rows) %do% {
+            countFrame %>% 
+              tidyr::gather("set", "cases", 2:3) %>%
+              group_modify(~data.frame(wilcox.p=coin::wilcox_test(cases~as.factor(set), data=.x) %>% 
+                                         coin::pvalue() %>% 
+                                         as.numeric(),                                      #test for difference in median
+                                       leveneTest(cases~factor(set), data=.x)$P[1],         #         heterogeneity of variance
+                                       fligner.p=fligner.test(cases~set, data=.x)$p.value,  #         heterogeneity of variance
+                                       ansari.p = coin::ansari_test(cases~as.factor(set), data=.x) %>% 
+                                         coin::pvalue() %>% 
+                                         as.numeric(),                                      #         difference in scale parameters
+                                       mood.p   =   mood.test(cases~set, data=.x)$p.value,  #         difference in scale parameters
+                                       f.p = var.test(no.muts~set, data=.x)$p.value))       #         compare the variances (parametric) 
+          }
+
+comparisons %>%
+  knitr::kable()
+
+
+```
+
+
+Second, specifcally per substittution.
 
 Get the data in shape
 ```{r}
 ageMdlFrameList <- 
   list(
     inova1 = inova1 %>% 
-  mutate(substitution = if_else(is.CpG, paste(substitution, "CpG"), as.character(substitution))) %>% 
-  group_by(SampleID, fathersAgeAtConceptionInYears, mothersAgeAtConceptionInYears, substitution) %>% 
-  count() %>% 
-  ungroup() %>% 
-  filter(!is.na(substitution)) %>%
-  complete(nesting(SampleID, 
-                   fathersAgeAtConceptionInYears, 
-                   mothersAgeAtConceptionInYears), 
-           substitution, 
-           fill = list(n=0)),
-  inova2 = inova2 %>% 
-  mutate(substitution = if_else(substitution == "C - T" & substr(surrounding,3,3) == "G", paste(substitution, "CpG"), as.character(substitution))) %>% 
-  group_by(SampleID, fathersAgeAtConceptionInYears, mothersAgeAtConceptionInYears, substitution) %>% 
-  count() %>% 
-  ungroup() %>% 
-  filter(!is.na(substitution)) %>%
-  complete(nesting(SampleID, 
-                   fathersAgeAtConceptionInYears, 
-                   mothersAgeAtConceptionInYears), 
-           substitution, 
-           fill = list(n=0)),
-  sasani = sasani %>% 
-  mutate(substitution = mut) %>% 
-  group_by(SampleID, fathersAgeAtConceptionInYears, mothersAgeAtConceptionInYears, substitution) %>% 
-  count() %>% 
-  ungroup() %>% 
-  filter(!is.na(substitution)) %>%
-  complete(nesting(SampleID, 
-                   fathersAgeAtConceptionInYears, 
-                   mothersAgeAtConceptionInYears), 
-           substitution, 
-           fill = list(n=0))
+      filterMuts(uniqGenome) %>%
+      mutate(substitution = if_else(is.CpG, paste(substitution, "CpG"), as.character(substitution))) %>% 
+      group_by(SampleID, fathersAgeAtConceptionInYears, mothersAgeAtConceptionInYears, substitution) %>% 
+      count() %>% 
+      ungroup() %>% 
+      filter(!is.na(substitution)) %>%
+      complete(nesting(SampleID, 
+                       fathersAgeAtConceptionInYears, 
+                       mothersAgeAtConceptionInYears), 
+               substitution, 
+               fill = list(n=0)),
+    inova2 = inova2 %>% 
+      filterMuts(uniqGenome) %>%
+      mutate(substitution = if_else(substitution == "C - T" & substr(surrounding,3,3) == "G", paste(substitution, "CpG"), as.character(substitution))) %>% 
+      group_by(SampleID, fathersAgeAtConceptionInYears, mothersAgeAtConceptionInYears, substitution) %>% 
+      count() %>% 
+      ungroup() %>% 
+      filter(!is.na(substitution)) %>%
+      complete(nesting(SampleID, 
+                       fathersAgeAtConceptionInYears, 
+                       mothersAgeAtConceptionInYears), 
+               substitution, 
+               fill = list(n=0)),
+    sasani = sasani %>% 
+      dplyr::select(-end) %>% 
+      filterMuts(uniqGenome) %>%
+      mutate(substitution = mut) %>% 
+      group_by(SampleID, fathersAgeAtConceptionInYears, mothersAgeAtConceptionInYears, substitution) %>% 
+      count() %>% 
+      ungroup() %>% 
+      filter(!is.na(substitution)) %>%
+      complete(nesting(SampleID, 
+                       fathersAgeAtConceptionInYears, 
+                       mothersAgeAtConceptionInYears), 
+               substitution, 
+               fill = list(n=0))
   )
 
 mdls <- 
@@ -693,7 +807,7 @@ countFrameList <-
               .combine = bind_rows) %do% {
                 tibble(
                   no.muts = 0:75,
-                  dens = getDensitySums(subs, mdlFrame = ageMdlFrame, mdls = mdlList)/816, #TODO is this right??
+                  dens = getDensitySums(subs, mdlFrame = ageMdlFrame, mdls = mdlList), 
                   substitution = subs)
               }
     countFrame <- 
@@ -704,7 +818,7 @@ countFrameList <-
       dplyr::rename(no.muts = n,
                     observed = nn) %>%
       full_join(poisDens %>%
-                  mutate(predicted = round(dens*816))%>% #rounding the estimates
+                  mutate(predicted = round(dens))%>% #rounding the estimates
                   select(-dens), 
                 by = c("substitution", "no.muts"))
     countFrame <- 
