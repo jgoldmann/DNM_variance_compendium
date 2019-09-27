@@ -270,23 +270,13 @@ twinsVsUnrelated <-
                                dplyr::rename(no.DNMs = n) %>%
                                ungroup(), maxAgeDiff) %>% 
       mutate(cohort="inova2"),
-    assembleTwinsVsUnrelated(sasani %>% 
-                               dplyr::select(-end) %>% 
-                               filterMuts(uniqGenome) %>% 
-                               group_by(SampleID, 
-                                        fathersAgeAtConceptionInYears, 
-                                        mothersAgeAtConceptionInYears, 
-                                        familyNr) %>%
-                               count() %>% 
-                               dplyr::rename(no.DNMs = n) %>%
-                               ungroup(), maxAgeDiff) %>% 
-      mutate(cohort="sasani"),
     assembleTwinsVsUnrelated(autism1 %>% mutate(no.DNMs=unique_snv), maxAgeDiff) %>% 
       mutate(cohort="autism1"),
     assembleTwinsVsUnrelated(autism2 %>% mutate(no.DNMs=snvs_unique), maxAgeDiff) %>% 
       mutate(cohort="autism2")
     ) %>%
-  mutate(fatherAge=map_dbl(data, ~mean(.$fathersAgeAtConceptionInYears)))
+  mutate(fatherAge=map_dbl(data, ~mean(.$fathersAgeAtConceptionInYears)),
+         cohort=fct_inorder(cohort))
 ```
 
 Visualization of the data for all cohorts apart
@@ -301,7 +291,8 @@ twinsVsUnrelated %>%
   geom_path(col="#008000") +
   labs(x="Father's age at conception in years",
        y="Dizygotic twins' no. DNMs") + 
-  facet_wrap(~cohort)
+  facet_wrap(~cohort) + 
+  ggpubr::theme_pubr()
 
 twinsVsUnrelated %>% 
   filter(set=="PAMUCs") %>% 
@@ -313,16 +304,21 @@ twinsVsUnrelated %>%
   geom_path(col="#2b2b2b") +
   labs(x="Father's age at conception in years",
        y="PAMUCs' no. DNMs") + 
-  facet_wrap(~cohort)
+  facet_wrap(~cohort) + 
+  ggpubr::theme_pubr()
+
 
 twinsVsUnrelated %>%
   ggplot(aes(x=cohort, y=diff_n, col=set)) + 
-  geom_boxplot(outlier.colour = NA)  +
-  geom_beeswarm(cex=2, dodge.width = 0.8) +
+  geom_violin(aes(fill=set)) + 
+  geom_boxplot(width=0.9)+
   scale_color_manual(values = c("PAMUCs"="#2b2b2b", "dizygote twins"="#008000"), 
                      labels = c("PAMUCs"="PAMUCs", "dizygote twins"="Dizygotic twins")) + 
+    scale_fill_manual(values = c("PAMUCs"="#2b2b2b", "dizygote twins"="#008000"), 
+                     labels = c("PAMUCs"="PAMUCs", "dizygote twins"="Dizygotic twins")) + 
   labs(x="", y="Difference in no. DNMs",
-       col="Set")
+       col="Set") + 
+  ggpubr::theme_pubr()
 
 ```
 
