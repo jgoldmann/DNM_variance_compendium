@@ -159,8 +159,7 @@ filterAndCalculate <- function(sasani, uniqGenome, withBatch = FALSE) {
              familyNr,
              batch) %>% 
       count() %>% 
-      calcRelativeVarCorsWithCi(withBatch = TRUE) %>%
-      filter(factor == "familyNr")
+      calcRelativeVarCorsWithCi(withBatch = TRUE)
   } else {
     filterMuts(sasani, uniqGenome) %>% 
       group_by(SampleID, 
@@ -168,8 +167,7 @@ filterAndCalculate <- function(sasani, uniqGenome, withBatch = FALSE) {
                mothersAgeAtConceptionInYears, 
                familyNr) %>% 
       count() %>% 
-      calcRelativeVarCorsWithCi(withBatch = FALSE) %>%
-      filter(factor == "familyNr")
+      calcRelativeVarCorsWithCi(withBatch = FALSE)
   }
 }
 ```
@@ -575,22 +573,30 @@ familyStatsFrTbl <- function(autism1, tblHdr = "unique_snv") {
 
 Doing the calculations
 ```{r}
-familyEstimates <-
+allEstimates <- 
   bind_rows(
-    filterAndCalculate(inova1, uniqGenome, withBatch = TRUE),
-    filterAndCalculate(inova2, uniqGenome, withBatch = TRUE),
-    filterAndCalculate(sasani %>% dplyr::select(-end), uniqGenome),
+    filterAndCalculate(inova1, uniqGenome, withBatch = TRUE) %>%
+      mutate(set = "inova1"),
+    filterAndCalculate(inova2, uniqGenome, withBatch = TRUE) %>%
+      mutate(set = "inova2"),
+    filterAndCalculate(sasani %>% dplyr::select(-end), uniqGenome) %>%
+      mutate(set = "sasani"),
     calcRelativeVarCorsWithCi(
       autism1 %>% 
         mutate(n = unique_snv), 
       withBatch = TRUE) %>%
-      filter(factor == "familyNr"),
+      mutate(set = "autism1"),
     calcRelativeVarCorsWithCi(
       autism2 %>% 
         mutate(n = snvs_unique), 
-      withBatch = TRUE)  %>%
-      filter(factor == "familyNr")
-  ) %>%
+      withBatch = TRUE) %>%
+      mutate(set = "autism2")
+  ) #TODO: do something about all the warnings
+
+
+familyEstimates <-
+  allEstimates %>%
+  filter(factor == "familyNr") %>%
   mutate(set = rep(c("inova1", "inova2", "sasani", "autism1", "autism2")),
          includesBatch = c(TRUE, TRUE, FALSE, TRUE, TRUE)) %>%
   mutate(region = c(rep("unique", 5))) %>%
@@ -603,7 +609,8 @@ familyEstimates <-
     familyStatsFrTbl(autism2, "snvs_unique"))
   )
 
-
+allEstimates %>%
+  knitr::kable()
 ```
 
 Vizualisation
@@ -623,6 +630,12 @@ ggplot(familyEstimates %>%
   labs(x=NULL, y="Family variance component") + 
   ggpubr::theme_pubr()
 
+allEstimates %>%
+    mutate(set = fct_inorder(set),
+           factor = fct_relevel(factor, c("Residual", "batch", "familyNr", "Fixed"))) %>%
+  ggplot(aes(y=relVar.total, fill=factor, x=set)) + 
+    geom_bar(stat="identity") + 
+    ggpubr::theme_pubr()
 ```
 
 
