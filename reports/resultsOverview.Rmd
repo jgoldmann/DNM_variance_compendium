@@ -490,12 +490,14 @@ agg_res <-
       ungroup() %>% 
       compareFamilyResidualDeltas() %>%
       mutate(dataset = "inova2")
-  )
+  ) %>% 
+  mutate(dataset = fct_inorder(dataset))
 
 ggplot(agg_res, aes(x=dataset, y=delta, group=paste(dataset, set))) +
   geom_violin(aes(fill=set)) + 
-  geom_boxplot(fill=NA) + 
-  theme_bw()
+  geom_boxplot(fill=NA, width=0.9) + 
+  ggpubr::theme_pubr() + 
+  labs(x=NULL, y="Parental age-corrected difference in no. DNMs")
 
 agg_res %>% 
   with(wilcox.test(delta ~ set))
@@ -606,15 +608,20 @@ familyEstimates <-
 
 Vizualisation
 ```{r}
-ggplot(familyEstimates,
+ggplot(familyEstimates %>%
+         mutate(set = fct_inorder(set)),
        aes(x=set, 
            y=relVar.total,
            ymin=lower.total,
            ymax=upper.total, 
            alpha=no.familys)) + 
   geom_pointrange() + 
+  geom_point() + 
+  geom_errorbar() +
+  geom_hline(yintercept = 0) + 
   facet_wrap(~region, ncol=1) +
-  theme_bw()
+  labs(x=NULL, y="Family variance component") + 
+  ggpubr::theme_pubr()
 
 ```
 
@@ -648,7 +655,7 @@ ageMdlFrameList <-
     inova1 = inova1 %>% 
       filterMuts(uniqGenome) %>%
       group_by(SampleID, fathersAgeAtConceptionInYears, mothersAgeAtConceptionInYears) %>% 
-      count() %>% 
+      dplyr::count() %>% 
       ungroup() %>% 
       complete(nesting(SampleID, 
                        fathersAgeAtConceptionInYears, 
@@ -657,7 +664,7 @@ ageMdlFrameList <-
     inova2 = inova2 %>% 
       filterMuts(uniqGenome) %>%
       group_by(SampleID, fathersAgeAtConceptionInYears, mothersAgeAtConceptionInYears) %>% 
-      count() %>% 
+      dplyr::count() %>% 
       ungroup() %>% 
       complete(nesting(SampleID, 
                        fathersAgeAtConceptionInYears, 
@@ -667,7 +674,7 @@ ageMdlFrameList <-
       dplyr::select(-end) %>% 
       filterMuts(uniqGenome) %>%
       group_by(SampleID, fathersAgeAtConceptionInYears, mothersAgeAtConceptionInYears) %>% 
-      count() %>% 
+      dplyr::count() %>% 
       ungroup() %>% 
       complete(nesting(SampleID, 
                        fathersAgeAtConceptionInYears, 
@@ -693,19 +700,32 @@ countFrameList <-
         dens = getDensitySum(mdlFrame = ageMdlFrame, mdl = mdlList))
     countFrame <- 
       ageMdlFrame %>%
-      count(n) %>%
+      dplyr::count(n) %>%
       ungroup() %>% 
       dplyr::rename(no.muts = n,
                     observed = nn) %>%
       full_join(poisDens %>%
                   mutate(predicted = round(dens))%>% #rounding the estimates
-                  select(-dens), 
+                  dplyr::select(-dens), 
                 by = c("no.muts"))
     countFrame <- 
       countFrame %>%
       mutate(observed = if_else(is.na(observed), 0L, observed))
     return(countFrame)
   }
+
+poisModPlots <- foreach(countFrame = countFrameList) %do% {
+  ggplot(countFrame,
+       aes(x=no.muts)) +
+  geom_line(aes(y=predicted), col="red") + 
+  geom_point(aes(y=observed)) + 
+  xlim(0, 75) + 
+  labs(y = "Number of offspring", x="Number of DNMs") + 
+  ggpubr::theme_pubr()
+}
+cowplot::plot_grid(plotlist = poisModPlots,
+                   nrow = 1,
+                   labels = c("a", "b", "c"))
 
 comparisons <- 
   foreach(countFrame = countFrameList,
@@ -741,7 +761,7 @@ ageMdlFrameList <-
       filterMuts(uniqGenome) %>%
       mutate(substitution = if_else(is.CpG, paste(substitution, "CpG"), as.character(substitution))) %>% 
       group_by(SampleID, fathersAgeAtConceptionInYears, mothersAgeAtConceptionInYears, substitution) %>% 
-      count() %>% 
+      dplyr::count() %>% 
       ungroup() %>% 
       filter(!is.na(substitution)) %>%
       complete(nesting(SampleID, 
@@ -753,7 +773,7 @@ ageMdlFrameList <-
       filterMuts(uniqGenome) %>%
       mutate(substitution = if_else(substitution == "C - T" & substr(surrounding,3,3) == "G", paste(substitution, "CpG"), as.character(substitution))) %>% 
       group_by(SampleID, fathersAgeAtConceptionInYears, mothersAgeAtConceptionInYears, substitution) %>% 
-      count() %>% 
+      dplyr::count() %>% 
       ungroup() %>% 
       filter(!is.na(substitution)) %>%
       complete(nesting(SampleID, 
@@ -766,7 +786,7 @@ ageMdlFrameList <-
       filterMuts(uniqGenome) %>%
       mutate(substitution = mut) %>% 
       group_by(SampleID, fathersAgeAtConceptionInYears, mothersAgeAtConceptionInYears, substitution) %>% 
-      count() %>% 
+      dplyr::count() %>% 
       ungroup() %>% 
       filter(!is.na(substitution)) %>%
       complete(nesting(SampleID, 
@@ -809,13 +829,13 @@ countFrameList <-
     countFrame <- 
       ageMdlFrame %>%
       group_by(substitution) %>%
-      count(n) %>%
+      dplyr::count(n) %>%
       ungroup() %>% 
       dplyr::rename(no.muts = n,
                     observed = nn) %>%
       full_join(poisDens %>%
                   mutate(predicted = round(dens))%>% #rounding the estimates
-                  select(-dens), 
+                  dplyr::select(-dens), 
                 by = c("substitution", "no.muts"))
     countFrame <- 
       countFrame %>%
@@ -834,7 +854,8 @@ foreach(countFrame = countFrameList) %do% {
   geom_point(aes(y=observed)) + 
   facet_wrap(~substitution) + 
   xlim(0, 40) + 
-  labs(y = "no.trios")
+  labs(y = "Number of DNMs", x = "Number of Offspring") + 
+    ggpubr::theme_pubr()
 }
 ```
 
