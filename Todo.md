@@ -2,12 +2,12 @@ TODO
 ====
 
 
-- check median number of children of Sasani cohort
-- Methods
 - add something on simulation analysis?
 - take over SFig 3: PAMUC diffs across ages?
 - STables of all datasets
 - PAMUCs vs twin STable
+- set random seeds
+- do something about the warnings
 
 
 
