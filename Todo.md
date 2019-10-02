@@ -6,12 +6,13 @@ TODO
 - take over SFig 3: PAMUC diffs across ages?
 - STables of all datasets
 - PAMUCs vs twin STable
-- set random seeds
 
 
 
 for the next release
 --------------------
+
+- consider not fitting batch effects for inova2 & autism1
 
 - abstract
 - author order

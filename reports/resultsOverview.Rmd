@@ -32,6 +32,7 @@ library(foreach)
 library(poissonMutSim)
 library(car)
 
+set.seed(4321)
 ```
 
 Get data
@@ -436,6 +437,8 @@ compareFamilyResidualDeltas <- function(autism1, n=1000) {
 ```{r}
 doParallel::registerDoParallel(cores=7)
 
+set.seed(4321)
+
 filterMuts(inova1, uniqGenome) %>% 
   group_by(SampleID, 
            fathersAgeAtConceptionInYears, 
@@ -613,6 +616,8 @@ familyStatsFrTbl <- function(autism1, tblHdr = "unique_snv") {
 
 Doing the calculations
 ```{r}
+set.seed(4321)
+
 allEstimates <- 
   bind_rows(
     filterAndCalculate(inova1, uniqGenome, withBatch = TRUE) %>%
@@ -714,6 +719,8 @@ Poisson model comparisons
 
 First, on all substitutions
 ```{r}
+set.seed(4321)
+
 ageMdlFrameList <- 
   list(
     inova1 = inova1 %>% 
@@ -878,6 +885,8 @@ mdls <-
 
 calculate
 ```{r}
+set.seed(4321)
+
 countFrameList <- 
   foreach(n = 1:length(ageMdlFrameList)) %do% {
     ageMdlFrame <- ageMdlFrameList[[n]]
