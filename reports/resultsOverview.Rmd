@@ -510,6 +510,7 @@ Function for running the variance component estimations
 calcRelativeVarCorsWithCi <- function(dnms, 
                                       withBatch=TRUE,
                                       nsim = 500) {
+  doublecheckFitConvergence(dnms, withBatch) # assert that we can ignore model convergence warnings
   if(withBatch) {
     estim <-
       rpt(n ~ fathersAgeAtConceptionInYears + mothersAgeAtConceptionInYears + (1|familyNr) + (1|batch),
@@ -532,13 +533,52 @@ calcRelativeVarCorsWithCi <- function(dnms,
           parallel = TRUE)
   }
   res <- 
-    estim %>%
-    with(bind_cols(estimate=t(.$R), .$CI_emp %>% rownames_to_column())) %>% 
+    bind_cols(estimate=as.double(estim$R), 
+              estim$CI_emp %>% rownames_to_column()) %>% 
     dplyr::rename(factor=rowname, 
                   relVar.total=estimate, 
                   lower.total=`2.5%`, 
                   upper.total=`97.5%`)
   return(res)
+}
+
+doublecheckFitConvergence <- function(dnms, 
+                                      withBatch=TRUE) {
+  # For some model fits, a convergence warning might be thrown sounding like this:
+  #
+  #         In checkConv(attr(opt, "derivs"), opt$par, ctrl = control$checkConv,  :
+  #           Model failed to converge with max|grad| = 0.00333311 (tol = 0.002, component 1)
+  #
+  # This can in principle be overcome by chosing the alternative optimzation option 'bobyqa' (https://stackoverflow.com/questions/21344555/convergence-error-for-development-version-of-lme4).
+  # Nevertheless, the estimates obtained by both the standard optimization and the 'bobyqa' optimization are exremely close to each other. In order to not reimplement the functionality of the 'rptr'-package with the bobyqa-option, we here assert that both estimates are close to identical.
+  if(withBatch) {
+    suppressWarnings(
+      opti_std <- 
+      lme4::lmer(n ~ fathersAgeAtConceptionInYears + mothersAgeAtConceptionInYears + (1|familyNr) + (1|batch),
+             data = dnms) %>% 
+      broom.mixed::tidy()
+    )
+    opti_bob <- 
+      lme4::lmer(n ~ fathersAgeAtConceptionInYears + mothersAgeAtConceptionInYears + (1|familyNr) + (1|batch),
+             data = dnms,
+             control = lme4::lmerControl(optimizer="bobyqa")) %>% 
+      broom.mixed::tidy()
+  } else {
+    suppressWarnings(
+      opti_std <- 
+      lme4::lmer(n ~ fathersAgeAtConceptionInYears + mothersAgeAtConceptionInYears + (1|familyNr),
+             data = dnms) %>% 
+      broom.mixed::tidy()
+    )
+    opti_bob <- 
+      lme4::lmer(n ~ fathersAgeAtConceptionInYears + mothersAgeAtConceptionInYears + (1|familyNr),
+             data = dnms,
+             control = lme4::lmerControl(optimizer="bobyqa")) %>% 
+      broom.mixed::tidy()
+  }
+  stopifnot(
+      near(opti_std$estimate, opti_bob$estimate, tol=1e-3)
+    )
 }
 ```
 
@@ -591,7 +631,18 @@ allEstimates <-
         mutate(n = snvs_unique), 
       withBatch = TRUE) %>%
       mutate(set = "autism2")
-  ) #TODO: do something about all the warnings
+  ) 
+# When running the above command, the following warnings and messages might arise:
+# 
+# 1. Message "boundary (singular) fit: see ?isSingular"
+#    This message is lauched because it is difficult to estimate the batch effect for the inova2 data given the experimental distribution of samples into batches and the estimate is close to zero. See also here: https://bbolker.github.io/mixedmodels-misc/glmmFAQ.html#singular-models-random-effect-variances-estimated-as-zero-or-correlations-estimated-as---1
+#
+# 2. Warning "In rptGaussian(formula, grname, data, CI, nboot, npermut, parallel,  : 1 rows containing missing values were removed"
+#    This warning is lauched because of batch information for one offspring of the three-offspring family 102-01507 in the inova2 dataset is missing. The estimation of the batch effect is therefore based on the remaining data points.
+#
+# 3. Several warnings like "In checkConv(attr(opt, "derivs"), opt$par, ctrl = control$checkConv,  :  Model failed to converge with max|grad| = 0.00302837 (tol = 0.002, component 1)"
+#    These warnings indicate difficulties of the standard fitting algorithm to accurately estimate the parameters. Following the recommendations for dealing with these warnings, we control that the parameter estimations are close to equal to the results obtained by another estimator (without warnings) in the function 'doublecheckFitConvergence' defined above. See also  https://bbolker.github.io/mixedmodels-misc/glmmFAQ.html#troubleshooting
+
 
 
 familyEstimates <-

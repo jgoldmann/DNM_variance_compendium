@@ -7,7 +7,6 @@ TODO
 - STables of all datasets
 - PAMUCs vs twin STable
 - set random seeds
-- do something about the warnings
 
 
 
@@ -23,7 +22,5 @@ for the next release
 - properly format tables
 - add figure descriptions
 - change labels to "cohort 1-5"
-
-
 
 
