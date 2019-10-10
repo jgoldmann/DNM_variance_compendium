@@ -100,12 +100,13 @@ sasani <-
   mutate(Chr = paste0("chr", chrom)) %>%
   dplyr::rename(
     SampleID = new_sample_id,
-    Variant = ref, 
+    Variant = alt,  
     Position = start,
     fathersAgeAtConceptionInYears = paternal_age_at_birth,
     mothersAgeAtConceptionInYears = maternal_age_at_birth,
     familyNr = new_family_id
-  )
+  ) %>%
+  filter(mut != "indel")
 
 autism1 <- dnmVarianceComponents::dnmDataAut
 autism2 <- dnmVarianceComponents::dnmDataAut2
@@ -812,7 +813,7 @@ comparisons <-
                                          coin::pvalue() %>% 
                                          as.numeric(),                                      #         difference in scale parameters
                                        mood.p   =   mood.test(cases~set, data=.x)$p.value,  #         difference in scale parameters
-                                       f.p = var.test(no.muts~set, data=.x)$p.value))       #         compare the variances (parametric) 
+                                       f.p = var.test(cases~set, data=.x)$p.value))       #         compare the variances (parametric) 
           }
 
 comparisons %>%
@@ -949,7 +950,7 @@ comparisons <-
                                          coin::pvalue() %>% 
                                          as.numeric(),                                      #         difference in scale parameters
                                        mood.p   =   mood.test(cases~set, data=.x)$p.value,  #         difference in scale parameters
-                                       f.p = var.test(no.muts~set, data=.x)$p.value))       #         compare the variances (parametric) 
+                                       f.p = var.test(cases~set, data=.x)$p.value))       #         compare the variances (parametric) 
           }
 
 comparisons %>%

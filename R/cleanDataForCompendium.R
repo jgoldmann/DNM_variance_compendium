@@ -72,12 +72,13 @@ sasani <-
   mutate(Chr = paste0("chr", chrom)) %>%
   dplyr::rename(
     SampleID = new_sample_id,
-    Variant = ref, 
+    Variant = alt, 
     Position = start,
     fathersAgeAtConceptionInYears = paternal_age_at_birth,
     mothersAgeAtConceptionInYears = maternal_age_at_birth,
     familyNr = new_family_id
-  )
+  ) %>%
+  filter(mut != "indel")
 
 autism1 <- dnmVarianceComponents::dnmDataAut
 autism2 <- dnmVarianceComponents::dnmDataAut2
