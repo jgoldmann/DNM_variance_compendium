@@ -3,15 +3,8 @@ TODO
 
 
 + data compendium
-  - STables
-  - code for munging, results figures
   - use stiching to avoid code duplication?
   - consider seperate git repo for compendium?
-
-
-- take over SFig 3: PAMUC diffs across ages?
-- STables of all datasets
-- PAMUCs vs twin STable
 
 
 
