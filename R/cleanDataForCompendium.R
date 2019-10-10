@@ -119,7 +119,7 @@ filterMuts <-
 
 
 
-# un-clutter and write out datasets ----------
+# un-clutter and write out sample datasets ----------
 
 samples_c1 <- 
   inova1 %>%
@@ -198,3 +198,57 @@ write_delim(samples_c5,
             delim = "\t")
 
 
+
+# un-clutter and write out mutation datasets ----------
+
+mutations_c1 <- 
+  inova1 %>%
+  transmute(
+    Chr,
+    Position,
+    SampleID,
+    Reference,
+    Variant, 
+    Phase = parent,
+    Substitution = if_else(is.CpG, 
+                           paste(substitution, "CpG"), 
+                           as.character(substitution))
+  ) %>% 
+  filterMuts(uniqGenome)
+write_delim(mutations_c1,
+            here("compendium/data/mutations_c1.tsv"),
+            delim = "\t")
+
+mutations_c2 <- 
+  inova2 %>%
+  transmute(
+    Chr,
+    Position,
+    SampleID,
+    Reference = ref,
+    Variant, 
+    Phase = parent,
+    Substitution = if_else(substitution == "C - T" & substr(surrounding,3,3) == "G", 
+                           paste(substitution, "CpG"), 
+                           as.character(substitution))
+  ) %>% 
+  filterMuts(uniqGenome)
+write_delim(mutations_c2,
+            here("compendium/data/mutations_c2.tsv"),
+            delim = "\t")
+
+mutations_c3 <- 
+  sasani %>%
+  transmute(
+    Chr = paste0("chr", chrom),
+    Position,
+    SampleID,
+    Reference = ref,
+    Variant, 
+    Phase = phase,
+    Substitution = mut
+  ) %>% 
+  filterMuts(uniqGenome)
+write_delim(mutations_c3,
+            here("compendium/data/mutations_c3.tsv"),
+            delim = "\t")
