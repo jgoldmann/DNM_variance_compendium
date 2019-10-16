@@ -1,0 +1,127 @@
+---
+title: "Residual Analysis"
+author: "Jakob Goldmann"
+output: 
+  html_document: 
+    keep_md: yes
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(here)
+library(foreach)
+library(doParallel)
+
+colSpec <- cols(SampleID = col_character(), 
+                familyNr = col_character(), 
+                batch = col_character(),
+                no.DNMs = col_integer())
+samples_c1 <- read_delim(file = here("compendium/data/samples_c1.tsv"), delim = "\t", col_types = colSpec)
+samples_c2 <- read_delim(file = here("compendium/data/samples_c2.tsv"), delim = "\t", col_types = colSpec)
+samples_c3 <- read_delim(file = here("compendium/data/samples_c3.tsv"), delim = "\t", col_types = colSpec)
+samples_c4 <- read_delim(file = here("compendium/data/samples_c4.tsv"), delim = "\t", col_types = colSpec)
+samples_c5 <- read_delim(file = here("compendium/data/samples_c5.tsv"), delim = "\t", col_types = colSpec)
+```
+
+
+```{r}
+compareFamilyResidualDeltas <- function(autism1, n=1000) {
+  simpMod <- lm(no.DNMs ~ fathersAgeAtConceptionInYears + mothersAgeAtConceptionInYears, autism1)
+  obs <- 
+    autism1 %>%
+    mutate(resi = residuals(simpMod)) %>%
+    group_by(familyNr) %>% 
+    nest() %>% 
+    mutate(no.offspring = map_dbl(.$data, nrow)) %>% 
+    filter(no.offspring == 2) %>% 
+    mutate(delta = map_dbl(.$data, ~abs(diff(.$resi)))) %>%
+    dplyr::select(-data, -no.offspring) %>%
+    mutate(set="observed")
+  sim <- 
+    foreach(1:n,
+            .combine = bind_rows,
+            .packages = c("tidyverse")) %dopar% {
+              autism1 %>%
+                mutate(resi = sample(residuals(simpMod))) %>%
+                group_by(familyNr) %>% 
+                nest() %>% 
+                mutate(no.offspring = map_dbl(.$data, nrow)) %>% 
+                filter(no.offspring == 2) %>% 
+                mutate(delta = map_dbl(.$data, ~abs(diff(.$resi)))) %>%
+                dplyr::select(-data, -no.offspring) %>%
+                mutate(set="simulated")
+            }
+  simObs <- bind_rows(obs, sim)
+}
+```
+
+
+```{r}
+doParallel::registerDoParallel(cores=7)
+
+set.seed(4321)
+
+samples_c1 %>% 
+  compareFamilyResidualDeltas() %>%
+  with(wilcox.test(delta ~ set))
+
+samples_c2 %>% 
+  compareFamilyResidualDeltas()  %>%
+  with(wilcox.test(delta ~ set))
+
+samples_c4 %>%
+compareFamilyResidualDeltas() %>%
+  with(wilcox.test(delta ~ set))
+
+samples_c5 %>% 
+compareFamilyResidualDeltas() %>%
+  with(wilcox.test(delta ~ set))
+
+```
+
+```{r}
+agg_res <-
+  bind_rows(
+    samples_c1 %>% 
+      compareFamilyResidualDeltas() %>%
+      mutate(dataset = "cohort1"),
+    samples_c2 %>% 
+      compareFamilyResidualDeltas() %>%
+      mutate(dataset = "cohort2"),
+    samples_c4 %>%
+      compareFamilyResidualDeltas() %>%
+      mutate(dataset = "cohort4"),
+    samples_c5 %>% 
+      compareFamilyResidualDeltas() %>%
+      mutate(dataset = "cohort5")
+  ) %>% 
+  mutate(dataset = fct_inorder(dataset))
+```
+
+```{r}
+ggplot(agg_res, aes(x=dataset, y=delta, group=paste(dataset, set))) +
+  geom_violin(aes(fill=set)) + 
+  geom_boxplot(fill=NA, width=0.9) + 
+  ggpubr::theme_pubr() + 
+  labs(x=NULL, y="Parental age-corrected difference in no. DNMs")
+
+agg_res %>% 
+  with(wilcox.test(delta ~ set))
+```
+
+
+
+Table
+-----
+
+```{r}
+#  very large table
+#write_delim(agg_res,
+#            path = here("compendium/analyses/residualAnalysis/agg_res.tsv"),
+#            delim = "\t")
+#
+```
+
+
