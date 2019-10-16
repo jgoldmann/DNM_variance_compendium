@@ -1,0 +1,3 @@
+[submodule "dnmvar-compendium"]
+	path = dnmvar-compendium
+	url = https://atlassian-gen.umcn.nl/bitbucket/scm/~jakob/dnmvar-compendium.git
