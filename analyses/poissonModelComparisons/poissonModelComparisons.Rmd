@@ -1,0 +1,281 @@
+---
+title: "Poisson Model Comparisons"
+author: "Jakob Goldmann"
+output: 
+  html_document: 
+    keep_md: yes
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(here)
+library(foreach)
+library(car)
+
+colSpec <- cols(SampleID = col_character(), 
+                Chr = col_character())
+mutations_c1 <- read_delim(here("compendium/data/mutations_c1.tsv"), delim = "\t", col_types = colSpec)
+mutations_c2 <- read_delim(here("compendium/data/mutations_c2.tsv"), delim = "\t", col_types = colSpec)
+mutations_c3 <- read_delim(here("compendium/data/mutations_c3.tsv"), delim = "\t", col_types = colSpec)
+
+colSpec <- cols(SampleID = col_character(), 
+                familyNr = col_character(), 
+                batch = col_character(),
+                no.DNMs = col_integer())
+samples_c1 <- read_delim(file = here("compendium/data/samples_c1.tsv"), delim = "\t", col_types = colSpec)
+samples_c2 <- read_delim(file = here("compendium/data/samples_c2.tsv"), delim = "\t", col_types = colSpec)
+samples_c3 <- read_delim(file = here("compendium/data/samples_c3.tsv"), delim = "\t", col_types = colSpec)
+samples_c4 <- read_delim(file = here("compendium/data/samples_c4.tsv"), delim = "\t", col_types = colSpec)
+samples_c5 <- read_delim(file = here("compendium/data/samples_c5.tsv"), delim = "\t", col_types = colSpec)
+
+```
+
+
+
+First, on all substitutions
+---------------------------
+
+
+```{r}
+getDensitySum <- 
+  function(
+  mdlFrame = ageMdlFrame,
+  mdl) {
+  mdlFrame %>%
+    mutate(pred = predict(mdl, data.frame(fathersAgeAtConceptionInYears,  mothersAgeAtConceptionInYears), type="response")) %>%
+    with(lapply(as.list(pred), getPoissonDensity)) %>%
+    unlist() %>%
+    matrix(byrow = TRUE, ncol = 76) %>%
+    colSums()
+  }
+getDensitySums <- 
+  function(
+    substit = "C - A",
+    mdlFrame = ageMdlFrame,
+    mdls = mdlList) {
+    mdlFrame %>%
+      filter(Substitution == substit) %>%
+      mutate(pred = predict(mdls[[substit]], data.frame(fathersAgeAtConceptionInYears,  mothersAgeAtConceptionInYears), type="response")) %>%
+      with(lapply(as.list(pred), getPoissonDensity)) %>%
+      unlist() %>%
+      matrix(byrow = TRUE, ncol = 76) %>%
+      colSums()
+  }
+getPoissonDensity <- 
+  function(expectedNo) {
+  dpois(0:75, expectedNo)  #dpois(x, lambda) gives the density of a poisson distribution with a mean of lamda at position x
+  }
+
+```
+
+
+```{r}
+set.seed(4321)
+
+ageMdlFrameList <- 
+  list(
+    samples_c1,
+    samples_c2,
+    samples_c3
+  )
+  
+mdls <- 
+  foreach(ageMdlFrame = ageMdlFrameList) %do% {
+    glm(no.DNMs ~ fathersAgeAtConceptionInYears + mothersAgeAtConceptionInYears, 
+            data=ageMdlFrame, 
+            family = poisson)
+  }
+
+countFrameList <- 
+  foreach(n = 1:length(ageMdlFrameList)) %do% {
+    ageMdlFrame <- ageMdlFrameList[[n]]
+    mdlList <- mdls[[n]]
+    poisDens <- 
+      tibble(
+        no.DNMs = 0:75,
+        dens = getDensitySum(mdlFrame = ageMdlFrame, mdl = mdlList))
+    countFrame <- 
+      ageMdlFrame %>%
+      dplyr::count(no.DNMs) %>%
+      ungroup() %>% 
+      dplyr::rename(observed = n) %>%
+      full_join(poisDens %>%
+                  mutate(predicted = round(dens))%>% #rounding the estimates
+                  dplyr::select(-dens), 
+                by = c("no.DNMs"))
+    countFrame <- 
+      countFrame %>%
+      mutate(observed = if_else(is.na(observed), 0L, observed))
+    return(countFrame)
+  }
+
+poisModPlots <- foreach(countFrame = countFrameList) %do% {
+  ggplot(countFrame,
+       aes(x=no.DNMs)) +
+  geom_line(aes(y=predicted), col="red") + 
+  geom_point(aes(y=observed)) + 
+  xlim(0, 75) + 
+  labs(y = "Number of offspring", x="Number of DNMs") + 
+  ggpubr::theme_pubr()
+}
+cowplot::plot_grid(plotlist = poisModPlots,
+                   nrow = 1,
+                   labels = c("a", "b", "c"))
+
+comparisons <- 
+  foreach(countFrame = countFrameList,
+          .combine = bind_rows) %do% {
+            countFrame %>% 
+              tidyr::gather("set", "cases", 2:3) %>%
+              group_modify(~data.frame(wilcox.p=coin::wilcox_test(cases~as.factor(set), data=.x) %>% 
+                                         coin::pvalue() %>% 
+                                         as.numeric(),                                      #test for difference in median
+                                       leveneTest(cases~factor(set), data=.x)$P[1],         #         heterogeneity of variance
+                                       fligner.p=fligner.test(cases~set, data=.x)$p.value,  #         heterogeneity of variance
+                                       ansari.p = coin::ansari_test(cases~as.factor(set), data=.x) %>% 
+                                         coin::pvalue() %>% 
+                                         as.numeric(),                                      #         difference in scale parameters
+                                       mood.p   =   mood.test(cases~set, data=.x)$p.value,  #         difference in scale parameters
+                                       f.p = var.test(cases~set, data=.x)$p.value))       #         compare the variances (parametric) 
+          }
+
+comparisons %>%
+  knitr::kable()
+
+
+```
+
+
+Second, specifcally per substittution.
+
+Get the data in shape
+```{r}
+ageMdlFrameList <- 
+  list(
+    mutations_c1 %>% 
+      full_join(samples_c1, by = "SampleID") %>% 
+      group_by(SampleID, fathersAgeAtConceptionInYears, mothersAgeAtConceptionInYears, Substitution) %>% 
+      dplyr::count() %>% 
+      ungroup() %>% 
+      filter(!is.na(Substitution)) %>%
+      complete(nesting(SampleID, 
+                       fathersAgeAtConceptionInYears, 
+                       mothersAgeAtConceptionInYears), 
+               Substitution, 
+               fill = list(n=0)),
+    mutations_c2 %>% 
+      full_join(samples_c2, by = "SampleID") %>% 
+      group_by(SampleID, fathersAgeAtConceptionInYears, mothersAgeAtConceptionInYears, Substitution) %>% 
+      dplyr::count() %>% 
+      ungroup() %>% 
+      filter(!is.na(Substitution)) %>%
+      complete(nesting(SampleID, 
+                       fathersAgeAtConceptionInYears, 
+                       mothersAgeAtConceptionInYears), 
+               Substitution, 
+               fill = list(n=0)),
+    mutations_c3 %>% 
+      full_join(samples_c3, by = "SampleID") %>% 
+      group_by(SampleID, fathersAgeAtConceptionInYears, mothersAgeAtConceptionInYears, Substitution) %>% 
+      dplyr::count() %>% 
+      ungroup() %>% 
+      filter(!is.na(Substitution)) %>%
+      complete(nesting(SampleID, 
+                       fathersAgeAtConceptionInYears, 
+                       mothersAgeAtConceptionInYears), 
+               Substitution, 
+               fill = list(n=0))
+    )
+
+mdls <- 
+  foreach(ageMdlFrame = ageMdlFrameList) %do% {
+    mdlList<- 
+      foreach(subs = unique(ageMdlFrame$Substitution)) %do% {
+        glm(n ~ fathersAgeAtConceptionInYears + mothersAgeAtConceptionInYears, 
+            data=ageMdlFrame, 
+            family = poisson,
+            subset = Substitution == subs)
+      }
+    names(mdlList) <- unique(ageMdlFrame$Substitution)
+    return(mdlList)
+  }
+
+```
+
+
+calculate
+```{r}
+set.seed(4321)
+
+countFrameList <- 
+  foreach(n = 1:length(ageMdlFrameList)) %do% {
+    ageMdlFrame <- ageMdlFrameList[[n]]
+    mdlList <- mdls[[n]]
+    poisDens <- 
+      foreach(subs = unique(ageMdlFrame$Substitution),
+              .combine = bind_rows) %do% {
+                tibble(
+                  no.muts = 0:75,
+                  dens = getDensitySums(subs, mdlFrame = ageMdlFrame, mdls = mdlList), 
+                  Substitution = subs)
+              }
+    countFrame <- 
+      ageMdlFrame %>%
+      group_by(Substitution) %>%
+      dplyr::count(n) %>%
+      ungroup() %>% 
+      dplyr::rename(no.DNMs = n,
+                    observed = nn) %>%
+      full_join(poisDens %>%
+                  mutate(predicted = round(dens))%>% #rounding the estimates
+                  dplyr::select(-dens), 
+                by = c("Substitution", "no.DNMs" = "no.muts"))
+    countFrame <- 
+      countFrame %>%
+      mutate(observed = if_else(is.na(observed), 0L, observed))
+    return(countFrame)
+  }
+```
+
+
+visualize
+```{r}
+foreach(countFrame = countFrameList) %do% {
+  ggplot(countFrame,
+       aes(x=no.DNMs)) +
+  geom_line(aes(y=predicted), col="red") + 
+  geom_point(aes(y=observed)) + 
+  facet_wrap(~Substitution) + 
+  xlim(0, 40) + 
+  labs(y = "Number of DNMs", x = "Number of Offspring") + 
+    ggpubr::theme_pubr()
+}
+```
+
+
+```{r}
+comparisons <- 
+  foreach(countFrame = countFrameList,
+          .combine = bind_rows) %do% {
+            countFrame %>% 
+              tidyr::gather("set", "cases", 3:4) %>%
+              group_by(Substitution) %>% 
+              group_modify(~data.frame(wilcox.p=coin::wilcox_test(cases~as.factor(set), data=.x) %>% 
+                                         coin::pvalue() %>% 
+                                         as.numeric(),                                      #test for difference in median
+                                       leveneTest(cases~factor(set), data=.x)$P[1],         #         heterogeneity of variance
+                                       fligner.p=fligner.test(cases~set, data=.x)$p.value,  #         heterogeneity of variance
+                                       ansari.p = coin::ansari_test(cases~as.factor(set), data=.x) %>% 
+                                         coin::pvalue() %>% 
+                                         as.numeric(),                                      #         difference in scale parameters
+                                       mood.p   =   mood.test(cases~set, data=.x)$p.value,  #         difference in scale parameters
+                                       f.p = var.test(cases~set, data=.x)$p.value))       #         compare the variances (parametric) 
+          }
+
+comparisons %>%
+  knitr::kable()
+```
+
+
