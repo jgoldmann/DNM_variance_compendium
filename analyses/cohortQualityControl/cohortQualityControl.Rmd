@@ -1,0 +1,98 @@
+---
+title: "cohortQualityControl"
+author: "Jakob Goldmann"
+output: 
+  html_document: 
+    keep_md: yes
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(here)
+library(broom)
+library(rsq)
+
+colSpec <- cols(SampleID = col_character(), 
+                familyNr = col_character(), 
+                batch = col_character(),
+                no.DNMs = col_integer())
+samples_c1 <- read_delim(file = here("dnmvar-compendium/data/samples_c1.tsv"), delim = "\t", col_types = colSpec)
+samples_c2 <- read_delim(file = here("dnmvar-compendium/data/samples_c2.tsv"), delim = "\t", col_types = colSpec)
+samples_c3 <- read_delim(file = here("dnmvar-compendium/data/samples_c3.tsv"), delim = "\t", col_types = colSpec)
+samples_c4 <- read_delim(file = here("dnmvar-compendium/data/samples_c4.tsv"), delim = "\t", col_types = colSpec)
+samples_c5 <- read_delim(file = here("dnmvar-compendium/data/samples_c5.tsv"), delim = "\t", col_types = colSpec)
+
+cohorts <- 
+  list(
+    samples_c1,
+    samples_c2,
+    samples_c3,
+    samples_c4,
+    samples_c5
+  )
+
+```
+
+
+Number of multi-offspring families & mean number of mutations per offspring
+
+```{r}
+familyStats <- function(autism1, tblHdr = "no.DNMs") {
+  no.offspring <- sum(autism1[, tblHdr]>0)
+  no.familys <- autism1 %>% group_by(familyNr) %>% summarize(no.children = length(SampleID)) %>% filter(no.children>1) %>% nrow()
+  no.muts <- sum(autism1[, tblHdr])
+  tibble(no.familys=no.familys, no.muts.pp=no.muts/no.offspring)
+}
+
+sapply(cohorts,
+       familyStats)
+
+```
+
+
+Parameters of linear age model
+
+```{r}
+linModParms <- 
+  function(samples_c1) {
+    simpMod <- lm(no.DNMs ~ fathersAgeAtConceptionInYears + mothersAgeAtConceptionInYears, samples_c1)
+    adj.r.squared <- simpMod %>% glance() %>% pull(adj.r.squared)
+    coefs <- simpMod %>% coef()
+    return(cbind(t(coefs), adj.r.squared))
+  }
+
+lapply(cohorts, 
+       linModParms)
+
+```
+
+
+Parameters of Poisson age model
+
+```{r}
+poisModParms <- 
+  function(samples_c1) {
+    poisMod <- glm(no.DNMs ~ fathersAgeAtConceptionInYears + mothersAgeAtConceptionInYears, 
+                   samples_c1, 
+                   family = poisson)
+    adj.r.squared <- poisMod %>% rsq()
+    coefs <- poisMod %>% coef()
+    return(cbind(t(coefs), adj.r.squared))
+  }
+
+lapply(cohorts, 
+       poisModParms)
+
+
+mdls <- 
+  foreach(ageMdlFrame = ageMdlFrameList) %do% {
+    glm(no.DNMs ~ fathersAgeAtConceptionInYears + mothersAgeAtConceptionInYears, 
+            data=ageMdlFrame, 
+            family = poisson)
+  }
+
+```
+
+
