@@ -17,11 +17,11 @@ colSpec <- cols(SampleID = col_character(),
                 familyNr = col_character(), 
                 batch = col_character(),
                 no.DNMs = col_integer())
-samples_c1 <- read_delim(file = here("compendium/data/samples_c1.tsv"), delim = "\t", col_types = colSpec)
-samples_c2 <- read_delim(file = here("compendium/data/samples_c2.tsv"), delim = "\t", col_types = colSpec)
-samples_c3 <- read_delim(file = here("compendium/data/samples_c3.tsv"), delim = "\t", col_types = colSpec)
-samples_c4 <- read_delim(file = here("compendium/data/samples_c4.tsv"), delim = "\t", col_types = colSpec)
-samples_c5 <- read_delim(file = here("compendium/data/samples_c5.tsv"), delim = "\t", col_types = colSpec)
+samples_c1 <- read_delim(file = here("dnmvar-compendium/data/samples_c1.tsv"), delim = "\t", col_types = colSpec)
+samples_c2 <- read_delim(file = here("dnmvar-compendium/data/samples_c2.tsv"), delim = "\t", col_types = colSpec)
+samples_c3 <- read_delim(file = here("dnmvar-compendium/data/samples_c3.tsv"), delim = "\t", col_types = colSpec)
+samples_c4 <- read_delim(file = here("dnmvar-compendium/data/samples_c4.tsv"), delim = "\t", col_types = colSpec)
+samples_c5 <- read_delim(file = here("dnmvar-compendium/data/samples_c5.tsv"), delim = "\t", col_types = colSpec)
 
 ```
 
@@ -108,7 +108,7 @@ Functions for augmentative statistics
 ```{r}
 familyStats <- function(autism1, tblHdr = "no.DNMs") {
   no.offspring <- sum(autism1[, tblHdr]>0)
-  no.familys <- autism1$familyNr %>% unique() %>% length()
+  no.familys <- autism1 %>% group_by(familyNr) %>% summarize(no.children = length(SampleID)) %>% filter(no.children>1) %>% nrow()
   no.muts <- sum(autism1[, tblHdr])
   tibble(no.familys=no.familys, no.muts.pp=no.muts/no.offspring)
 }
