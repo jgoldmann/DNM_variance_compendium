@@ -17,11 +17,11 @@ colSpec <- cols(SampleID = col_character(),
                 familyNr = col_character(), 
                 batch = col_character(),
                 no.DNMs = col_integer())
-samples_c1 <- read_delim(file = here("dnmvar-compendium/data/samples_c1.tsv"), delim = "\t", col_types = colSpec)
-samples_c2 <- read_delim(file = here("dnmvar-compendium/data/samples_c2.tsv"), delim = "\t", col_types = colSpec)
-samples_c3 <- read_delim(file = here("dnmvar-compendium/data/samples_c3.tsv"), delim = "\t", col_types = colSpec)
-samples_c4 <- read_delim(file = here("dnmvar-compendium/data/samples_c4.tsv"), delim = "\t", col_types = colSpec)
-samples_c5 <- read_delim(file = here("dnmvar-compendium/data/samples_c5.tsv"), delim = "\t", col_types = colSpec)
+samples_c1  <- read_delim(file = here("dnmvar-compendium/data/samples_c1.tsv"),  delim = "\t", col_types = colSpec)
+samples_c2  <- read_delim(file = here("dnmvar-compendium/data/samples_c2.tsv"),  delim = "\t", col_types = colSpec)
+samples_c3  <- read_delim(file = here("dnmvar-compendium/data/samples_c3.tsv"),  delim = "\t", col_types = colSpec)
+samples_c4  <- read_delim(file = here("dnmvar-compendium/data/samples_c4.tsv"),  delim = "\t", col_types = colSpec)
+samples_c3b <- read_delim(file = here("dnmvar-compendium/data/samples_c3b.tsv"), delim = "\t", col_types = colSpec)
 
 ```
 
@@ -109,8 +109,11 @@ Functions for augmentative statistics
 familyStats <- function(autism1, tblHdr = "no.DNMs") {
   no.offspring <- sum(autism1[, tblHdr]>0)
   no.familys <- autism1 %>% group_by(familyNr) %>% summarize(no.children = length(SampleID)) %>% filter(no.children>1) %>% nrow()
+  no.childrenPerFamily <- autism1 %>% group_by(familyNr) %>% summarise(familySize=length(SampleID)) %>% pull(familySize) %>% mean()
   no.muts <- sum(autism1[, tblHdr])
-  tibble(no.familys=no.familys, no.muts.pp=no.muts/no.offspring)
+  tibble(no.familys=no.familys, 
+         no.childrenPerFamily = no.childrenPerFamily, 
+         no.muts.pp=no.muts/no.offspring)
 }
 
 ```
@@ -122,10 +125,9 @@ set.seed(4321)
 allEstimates <- 
   bind_rows(
     samples_c1 %>% calcRelativeVarCorsWithCi() %>% mutate(set = "cohort1"),
-    samples_c2 %>% calcRelativeVarCorsWithCi() %>% mutate(set = "cohort2"),
-    samples_c3 %>% calcRelativeVarCorsWithCi(withBatch = FALSE) %>% mutate(set = "cohort3"),
-    samples_c4 %>% calcRelativeVarCorsWithCi() %>% mutate(set = "cohort4"),
-    samples_c5 %>% calcRelativeVarCorsWithCi() %>% mutate(set = "cohort5")
+    samples_c2 %>% calcRelativeVarCorsWithCi(withBatch = FALSE) %>% mutate(set = "cohort2"),
+    samples_c3 %>% calcRelativeVarCorsWithCi() %>% mutate(set = "cohort3"),
+    samples_c4 %>% calcRelativeVarCorsWithCi(withBatch = FALSE) %>% mutate(set = "cohort4")
   ) 
 # When running the above command, the following warnings and messages might arise:
 # 
@@ -143,18 +145,17 @@ allEstimates <-
 familyEstimates <-
   allEstimates %>%
   filter(factor == "familyNr") %>%
-  mutate(includesBatch = c(TRUE, TRUE, FALSE, TRUE, TRUE)) %>%
-  mutate(region = c(rep("unique", 5))) %>%
+  mutate(includesBatch = c(TRUE, FALSE, TRUE, FALSE)) %>%
+  mutate(region = c(rep("unique", 4))) %>%
   bind_cols(
     bind_rows(
     familyStats(samples_c1),
     familyStats(samples_c2),
     familyStats(samples_c3),
-    familyStats(samples_c4),
-    familyStats(samples_c5)
+    familyStats(samples_c4)
   ))
 
-allEstimates %>%
+familyEstimates %>%
   knitr::kable()
 ```
 
@@ -165,13 +166,10 @@ ggplot(familyEstimates %>%
        aes(x=set, 
            y=relVar.total,
            ymin=lower.total,
-           ymax=upper.total, 
-           alpha=no.familys)) + 
-  geom_pointrange() + 
-  geom_point() + 
-  geom_errorbar() +
+           ymax=upper.total)) +  
+  geom_errorbar(aes(size=no.childrenPerFamily), col = "grey") +
+    geom_point(aes(size=no.childrenPerFamily), col="#008000", shape=18) + 
   geom_hline(yintercept = 0) + 
-  facet_wrap(~region, ncol=1) +
   labs(x=NULL, y="Family variance component") + 
   ggpubr::theme_pubr()
 

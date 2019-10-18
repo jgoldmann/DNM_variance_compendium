@@ -18,11 +18,11 @@ colSpec <- cols(SampleID = col_character(),
                 familyNr = col_character(), 
                 batch = col_character(),
                 no.DNMs = col_integer())
-samples_c1 <- read_delim(file = here("compendium/data/samples_c1.tsv"), delim = "\t", col_types = colSpec)
-samples_c2 <- read_delim(file = here("compendium/data/samples_c2.tsv"), delim = "\t", col_types = colSpec)
-samples_c3 <- read_delim(file = here("compendium/data/samples_c3.tsv"), delim = "\t", col_types = colSpec)
-samples_c4 <- read_delim(file = here("compendium/data/samples_c4.tsv"), delim = "\t", col_types = colSpec)
-samples_c5 <- read_delim(file = here("compendium/data/samples_c5.tsv"), delim = "\t", col_types = colSpec)
+samples_c1  <- read_delim(file = here("dnmvar-compendium/data/samples_c1.tsv"),  delim = "\t", col_types = colSpec)
+samples_c2  <- read_delim(file = here("dnmvar-compendium/data/samples_c2.tsv"),  delim = "\t", col_types = colSpec)
+samples_c3  <- read_delim(file = here("dnmvar-compendium/data/samples_c3.tsv"),  delim = "\t", col_types = colSpec)
+samples_c4  <- read_delim(file = here("dnmvar-compendium/data/samples_c4.tsv"),  delim = "\t", col_types = colSpec)
+samples_c3b <- read_delim(file = here("dnmvar-compendium/data/samples_c3b.tsv"), delim = "\t", col_types = colSpec)
 ```
 
 
@@ -71,11 +71,7 @@ samples_c2 %>%
   compareFamilyResidualDeltas()  %>%
   with(wilcox.test(delta ~ set))
 
-samples_c4 %>%
-compareFamilyResidualDeltas() %>%
-  with(wilcox.test(delta ~ set))
-
-samples_c5 %>% 
+samples_c3 %>%
 compareFamilyResidualDeltas() %>%
   with(wilcox.test(delta ~ set))
 
@@ -90,12 +86,9 @@ agg_res <-
     samples_c2 %>% 
       compareFamilyResidualDeltas() %>%
       mutate(dataset = "cohort2"),
-    samples_c4 %>%
+    samples_c3 %>%
       compareFamilyResidualDeltas() %>%
-      mutate(dataset = "cohort4"),
-    samples_c5 %>% 
-      compareFamilyResidualDeltas() %>%
-      mutate(dataset = "cohort5")
+      mutate(dataset = "cohort3")
   ) %>% 
   mutate(dataset = fct_inorder(dataset))
 ```

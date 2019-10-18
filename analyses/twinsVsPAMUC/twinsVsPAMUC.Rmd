@@ -16,11 +16,11 @@ colSpec <- cols(SampleID = col_character(),
                 familyNr = col_character(), 
                 batch = col_character(),
                 no.DNMs = col_integer())
-samples_c1 <- read_delim(file = here("compendium/data/samples_c1.tsv"), delim = "\t", col_types = colSpec)
-samples_c2 <- read_delim(file = here("compendium/data/samples_c2.tsv"), delim = "\t", col_types = colSpec)
-samples_c3 <- read_delim(file = here("compendium/data/samples_c3.tsv"), delim = "\t", col_types = colSpec)
-samples_c4 <- read_delim(file = here("compendium/data/samples_c4.tsv"), delim = "\t", col_types = colSpec)
-samples_c5 <- read_delim(file = here("compendium/data/samples_c5.tsv"), delim = "\t", col_types = colSpec)
+samples_c1 <-  read_delim(file = here("dnmvar-compendium/data/samples_c1.tsv"),  delim = "\t", col_types = colSpec)
+samples_c2 <-  read_delim(file = here("dnmvar-compendium/data/samples_c2.tsv"),  delim = "\t", col_types = colSpec)
+samples_c3 <-  read_delim(file = here("dnmvar-compendium/data/samples_c3.tsv"),  delim = "\t", col_types = colSpec)
+samples_c4 <-  read_delim(file = here("dnmvar-compendium/data/samples_c4.tsv"),  delim = "\t", col_types = colSpec)
+samples_c3b <- read_delim(file = here("dnmvar-compendium/data/samples_c3b.tsv"), delim = "\t", col_types = colSpec)
 
 
 ```
@@ -101,10 +101,8 @@ twinsVsUnrelated <-
       mutate(cohort="cohort1"), 
     assembleTwinsVsUnrelated(samples_c2, maxAgeDiff) %>% 
       mutate(cohort="cohort2"),
-    assembleTwinsVsUnrelated(samples_c4, maxAgeDiff) %>% 
-      mutate(cohort="cohort4"),
-    assembleTwinsVsUnrelated(samples_c5, maxAgeDiff) %>% 
-      mutate(cohort="cohort5")
+    assembleTwinsVsUnrelated(samples_c3, maxAgeDiff) %>% 
+      mutate(cohort="cohort3")
     ) %>%
   mutate(fatherAge=map_dbl(data, ~mean(.$fathersAgeAtConceptionInYears)),
          cohort=fct_inorder(cohort))
@@ -198,14 +196,12 @@ twinsVsUnrelated %>%
 Second, are the twin differences of PAMUCs larger than of twins?
 ```{r}
 twinsVsUnrelated %>% 
-  filter(cohort != "sasani") %>%
   group_by(cohort) %>% 
   do(with(.,
           broom::tidy(wilcox.test(diff_n~set, 
                                   alternative="less", 
                                   exact=FALSE))))    # use a normal approximation, as there are ties in the data
 twinsVsUnrelated %>% 
-  filter(!(cohort %in% c("sasani", "autism1"))) %>% 
   with(.,broom::tidy(wilcox.test(diff_n~set, 
                                  alternative="less", 
                                  exact=FALSE)))

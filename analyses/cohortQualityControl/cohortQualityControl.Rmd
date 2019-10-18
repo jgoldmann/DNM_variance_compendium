@@ -18,11 +18,11 @@ colSpec <- cols(SampleID = col_character(),
                 familyNr = col_character(), 
                 batch = col_character(),
                 no.DNMs = col_integer())
-samples_c1 <- read_delim(file = here("dnmvar-compendium/data/samples_c1.tsv"), delim = "\t", col_types = colSpec)
-samples_c2 <- read_delim(file = here("dnmvar-compendium/data/samples_c2.tsv"), delim = "\t", col_types = colSpec)
-samples_c3 <- read_delim(file = here("dnmvar-compendium/data/samples_c3.tsv"), delim = "\t", col_types = colSpec)
-samples_c4 <- read_delim(file = here("dnmvar-compendium/data/samples_c4.tsv"), delim = "\t", col_types = colSpec)
-samples_c5 <- read_delim(file = here("dnmvar-compendium/data/samples_c5.tsv"), delim = "\t", col_types = colSpec)
+samples_c1  <- read_delim(file = here("dnmvar-compendium/data/samples_c1.tsv"),  delim = "\t", col_types = colSpec)
+samples_c2  <- read_delim(file = here("dnmvar-compendium/data/samples_c2.tsv"),  delim = "\t", col_types = colSpec)
+samples_c3  <- read_delim(file = here("dnmvar-compendium/data/samples_c3.tsv"),  delim = "\t", col_types = colSpec)
+samples_c4  <- read_delim(file = here("dnmvar-compendium/data/samples_c4.tsv"),  delim = "\t", col_types = colSpec)
+samples_c3b <- read_delim(file = here("dnmvar-compendium/data/samples_c3b.tsv"), delim = "\t", col_types = colSpec)
 
 cohorts <- 
   list(
@@ -30,7 +30,7 @@ cohorts <-
     samples_c2,
     samples_c3,
     samples_c4,
-    samples_c5
+    samples_c3b
   )
 
 ```
@@ -39,11 +39,14 @@ cohorts <-
 Number of multi-offspring families & mean number of mutations per offspring
 
 ```{r}
-familyStats <- function(autism1, tblHdr = "no.DNMs") {
-  no.offspring <- sum(autism1[, tblHdr]>0)
-  no.familys <- autism1 %>% group_by(familyNr) %>% summarize(no.children = length(SampleID)) %>% filter(no.children>1) %>% nrow()
-  no.muts <- sum(autism1[, tblHdr])
-  tibble(no.familys=no.familys, no.muts.pp=no.muts/no.offspring)
+familyStats <- function(samples_c1, tblHdr = "no.DNMs") {
+  no.offspring <- sum(samples_c1[, tblHdr]>0)
+  no.familys <- samples_c1 %>% group_by(familyNr) %>% summarize(no.children = length(SampleID)) %>% filter(no.children>1) %>% nrow()
+  no.childrenPerFamily <- samples_c1 %>% group_by(familyNr) %>% summarise(familySize=length(SampleID)) %>% pull(familySize) %>% mean()
+  no.muts <- sum(samples_c1[, tblHdr])
+  tibble(no.familys=no.familys, 
+         no.childrenPerFamily = no.childrenPerFamily,
+         no.muts.pp=no.muts/no.offspring)
 }
 
 sapply(cohorts,
@@ -84,14 +87,6 @@ poisModParms <-
 
 lapply(cohorts, 
        poisModParms)
-
-
-mdls <- 
-  foreach(ageMdlFrame = ageMdlFrameList) %do% {
-    glm(no.DNMs ~ fathersAgeAtConceptionInYears + mothersAgeAtConceptionInYears, 
-            data=ageMdlFrame, 
-            family = poisson)
-  }
 
 ```
 
