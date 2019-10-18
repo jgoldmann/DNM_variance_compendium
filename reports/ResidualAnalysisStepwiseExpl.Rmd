@@ -1,0 +1,321 @@
+---
+title: "Residual analysis stepwise explanation"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(foreach)
+library(here)
+library(doParallel)
+
+library(rtracklayer)
+
+library(inovaDNMs)
+library(inovaDNMs102)
+library(dnmVarianceComponents)
+
+set.seed(321)
+```
+
+
+Prepare inputs
+--------------
+
+Get data like in the other scripts:
+
+```{r}
+inova1 <- 
+  inovaDNMs::obs %>%
+  dplyr::rename(
+    SampleID = internalID,
+    Variant = Variant, 
+    Chr = Chromosome,
+    Position = Start.position)  %>%
+  full_join(inovaDNMs::trios %>% 
+              filter(in.data), 
+            by=c(SampleID = "Trio.ID")) %>%
+  dplyr::rename(familyNr = Family.Study.ID)
+
+inova2 <- 
+  inovaDNMs102::allDNMs %>%
+  dplyr::rename(
+    SampleID = sampleName,
+    Variant = alt, 
+    Chr = chrom,
+    Position = start) %>%
+  full_join(inovaDNMs102::trios, 
+            by=c(SampleID = "PROBANDID")) %>%
+  dplyr::rename(familyNr = FAMILYID) %>%
+  mutate(end = NULL)
+
+#sasani DNMs
+sasani <- 
+  read_delim("https://github.com/quinlan-lab/ceph-dnm-manuscript/raw/master/data/second_gen.dnms.txt",
+             delim = "\t",
+             col_types = cols(chrom = col_character(),
+                              new_family_id = col_character())) %>%
+  bind_rows(read_delim("https://github.com/quinlan-lab/ceph-dnm-manuscript/raw/master/data/third_gen.dnms.txt",
+                       delim = "\t",
+                       col_types = cols(chrom = col_character(),
+                                        new_family_id = col_character()))) %>%
+  bind_rows(read_delim("https://github.com/quinlan-lab/ceph-dnm-manuscript/raw/master/data/post-pgcs.dnms.txt",
+                       delim = "\t",
+                       col_types = cols(chrom = col_character(),
+                                        new_family_id = col_character()))) %>%
+  bind_rows(read_delim("https://github.com/quinlan-lab/ceph-dnm-manuscript/raw/master/data/gonosomal.dnms.txt",
+                       delim = "\t",
+                       col_types = cols(chrom = col_character(),
+                                        new_family_id = col_character()))) %>%
+  mutate(Chr = paste0("chr", chrom)) %>%
+  dplyr::rename(
+    SampleID = new_sample_id,
+    Variant = ref, 
+    Position = start,
+    fathersAgeAtConceptionInYears = paternal_age_at_birth,
+    mothersAgeAtConceptionInYears = maternal_age_at_birth,
+    familyNr = new_family_id
+  )
+
+autism1 <- dnmVarianceComponents::dnmDataAut
+autism2 <- dnmVarianceComponents::dnmDataAut2
+
+```
+
+Auxilliary function for filtering the data
+```{r}
+filterMuts <- 
+  function(muts, ## needs columns "SampleID", Variant, Chr, Position
+           filter){
+    muts %>% 
+      makeGRangesFromDataFrame(seqnames.field = "Chr", 
+                               start.field = "Position", 
+                               end.field = "Position", 
+                               ignore.strand = TRUE, 
+                               keep.extra.columns = TRUE) %>% 
+      subsetByOverlaps(filter) %>%
+      as.data.frame() %>%
+      as.tibble() %>%
+      mutate(Chr=seqnames, Position=start)
+  }
+```
+
+Definition of the unique genome sites
+```{r}
+uniqGenome <- 
+  import(here("data/master_repeat_file.bed.gz")) %>% 
+  gaps()
+seqlevelsStyle(uniqGenome) <- "UCSC"
+```
+
+
+# Step-by-step approach to residual variance analysis
+
+
+Take the autism1 data:
+```{r}
+head(autism1)
+```
+
+First, apply a simple linear model to correct for both parent's age
+```{r}
+simpMod <- lm(unique_snv ~ fathersAgeAtConceptionInYears + mothersAgeAtConceptionInYears, autism1)
+
+ggplot(simpMod %>%
+         broom::augment(),
+       aes(x=fathersAgeAtConceptionInYears, y=unique_snv)) +
+  geom_point() +
+  geom_point(aes(y=.fitted), shape=1, alpha = .4) + 
+  geom_segment(aes(xend = fathersAgeAtConceptionInYears, yend = .fitted), 
+               alpha = .2) + 
+  theme_bw() + 
+  ggtitle("Regression for parental ages")
+```
+
+
+Let's highlight the resiudals of the first family in the dataset
+
+```{r}
+ggplot(simpMod %>%
+         broom::augment() %>%
+         mutate(highlight = autism1$familyNr=="11006"),
+       aes(x=fathersAgeAtConceptionInYears, y=unique_snv, alpha=highlight)) +
+  geom_point(aes(col = highlight)) +
+  geom_point(aes(y=.fitted), shape=1) + 
+  geom_segment(aes(xend = fathersAgeAtConceptionInYears, yend = .fitted, col = highlight, size=highlight)) + 
+  theme_bw() + 
+  scale_color_manual(values = c("TRUE"="red", "FALSE"="black")) + 
+  scale_alpha_manual(values = c("TRUE"=1, "FALSE"=0.2)) +
+  scale_size_manual(values = c("TRUE"=1.5, "FALSE"=0.1)) +
+  ggtitle("One family's offspring")
+
+```
+
+
+The residuals of this family are both above and below zero.
+
+```{r}
+simpMod %>%
+    broom::augment() %>%
+    mutate(highlight = autism1$familyNr=="11006") %>% 
+  ggplot(aes(x=.resid)) + 
+  geom_density() + 
+  geom_vline(xintercept=0) + 
+  theme_bw() + 
+  geom_vline(xintercept=residuals(simpMod)[autism1$familyNr=="11006"], 
+             col = "red") +
+  ggtitle("Residuals of one family's offspring")
+```
+
+
+In a scenario of mutations perfectly explained by parent's age and by family membership, the residuals of family members would very close to each other:
+```{r}
+set.seed(123)
+simulatedData <- 
+  tibble(   #simulate parents, family effects and first children
+    fathersAge = seq(from = 20, to = 45, length.out = 50),
+    mothersAge = fathersAge + rnorm(50, mean = -1, sd = 3),
+    family = paste("I", 1:50, sep=""),
+    child = paste(family, "-1", sep= ""),
+    familyEffect = round(rnorm(50, mean = 0, sd = 5)),
+    no.muts = round(fathersAge + 0.25*mothersAge + familyEffect)
+  )
+simulatedData <- 
+  simulatedData %>%
+  bind_rows(
+    tibble(
+      fathersAge = simulatedData$fathersAge + 2,
+      mothersAge = simulatedData$mothersAge + 2,
+      family = simulatedData$family,
+      child = paste(simulatedData$family, "-2", sep= ""),
+      familyEffect = simulatedData$familyEffect,
+      no.muts = round(fathersAge + 0.25*mothersAge + familyEffect)
+    )
+  )
+
+simpModSim <- lm(no.muts ~ fathersAge + mothersAge, simulatedData)
+
+simpModSim %>%
+    broom::augment() %>%
+    mutate(highlight = simulatedData$family=="I1") %>% 
+  ggplot(aes(x=.resid)) + 
+  geom_density() + 
+  geom_vline(xintercept=0) + 
+  theme_bw() + 
+  geom_vline(xintercept=residuals(simpModSim)[simulatedData$family=="I1"], 
+             col = "red") + 
+  ggtitle("Theoretical distribution of one family's residuals if the family effect was pronounced")
+```
+
+
+
+Are the observed residuals of family members more similar to each other than expected? In order to find out, we can compare it to the distribution of residuals from the same dataset with randomized family labels:
+
+
+```{r}
+compareFamilyResidualDeltas <- function(autism1, n=1000) {
+  simpMod <- lm(n ~ fathersAgeAtConceptionInYears + mothersAgeAtConceptionInYears, autism1)
+  obs <- 
+    autism1 %>%
+    mutate(resi = residuals(simpMod)) %>%
+    group_by(familyNr) %>% 
+    nest() %>% 
+    mutate(no.offspring = map_dbl(.$data, nrow)) %>% 
+    filter(no.offspring == 2) %>% 
+    mutate(delta = map_dbl(.$data, ~abs(diff(.$resi)))) %>%
+    dplyr::select(-data, -no.offspring) %>%
+    mutate(set="observed")
+  sim <- 
+    foreach(1:n,
+            .combine = bind_rows,
+            .packages = c("tidyverse")) %dopar% {
+              autism1 %>%
+                mutate(resi = sample(residuals(simpMod))) %>%
+                group_by(familyNr) %>% 
+                nest() %>% 
+                mutate(no.offspring = map_dbl(.$data, nrow)) %>% 
+                filter(no.offspring == 2) %>% 
+                mutate(delta = map_dbl(.$data, ~abs(diff(.$resi)))) %>%
+                dplyr::select(-data, -no.offspring) %>%
+                mutate(set="simulated")
+            }
+  simObs <- bind_rows(obs, sim)
+}
+
+compareFamilyResidualDeltas(autism1 %>% mutate(n=unique_snv)) %>%
+  with(wilcox.test(delta ~ set))
+```
+
+There is no significant difference between the observed distribution and a simulated one. This implies that the residuals inside of families are not significantly closer to each other than any two random residuals. Thus the presumed family effects are not large.
+
+This analysis can also be applied to the other datasets:
+
+```{r}
+compareFamilyResidualDeltas(autism2 %>% mutate(n=snvs_unique))  %>%
+  with(wilcox.test(delta ~ set))
+
+filterMuts(inova1, uniqGenome) %>% 
+  group_by(SampleID, 
+           fathersAgeAtConceptionInYears, 
+           mothersAgeAtConceptionInYears, 
+           familyNr) %>% 
+  dplyr::count() %>%
+  ungroup() %>% 
+  compareFamilyResidualDeltas()   %>%
+  with(wilcox.test(delta ~ set))
+
+filterMuts(inova2, uniqGenome) %>% 
+  group_by(SampleID, 
+           fathersAgeAtConceptionInYears, 
+           mothersAgeAtConceptionInYears, 
+           familyNr) %>% 
+  dplyr::count() %>%
+  ungroup() %>% 
+  compareFamilyResidualDeltas()  %>%
+  with(wilcox.test(delta ~ set))
+
+```
+
+
+Also for an aggregation of all residuals the p-value is not below 0.05.
+
+```{r}
+agg_res <-
+  bind_rows(
+    #no autism1 in order to not count single samples twice
+    compareFamilyResidualDeltas(autism2 %>% mutate(n=snvs_unique) %>% mutate(familyNr = as.character(familyNr))) %>%
+      mutate(dataset = "autism2"),
+    filterMuts(inova1, uniqGenome) %>% #0.41
+      group_by(SampleID, 
+               fathersAgeAtConceptionInYears, 
+               mothersAgeAtConceptionInYears, 
+               familyNr) %>% 
+      dplyr::count() %>%
+      ungroup() %>% 
+      compareFamilyResidualDeltas() %>%
+      mutate(dataset = "inova1"),
+    filterMuts(inova2, uniqGenome) %>% 
+      group_by(SampleID, 
+               fathersAgeAtConceptionInYears, 
+               mothersAgeAtConceptionInYears, 
+               familyNr) %>% 
+      dplyr::count() %>%
+      ungroup() %>% 
+      compareFamilyResidualDeltas() %>%
+      mutate(dataset = "inova2")
+  )
+
+ggplot(agg_res, aes(x=dataset, y=delta, group=paste(dataset, set))) +
+  geom_violin(aes(fill=set)) + 
+  geom_boxplot(fill=NA) + 
+  theme_bw()
+
+agg_res %>% 
+  with(wilcox.test(delta ~ set))
+```
+
+
