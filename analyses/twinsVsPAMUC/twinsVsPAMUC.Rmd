@@ -140,15 +140,18 @@ twinsVsUnrelated %>%
   facet_wrap(~cohort) + 
   ggpubr::theme_pubr()
 
-
+give.n <- function(x){
+    return(data.frame(y = -1, label = paste0("n=", length(x))))
+}
 twinsVsUnrelated %>%
   ggplot(aes(x=cohort, y=diff_n, col=set)) + 
   geom_violin(aes(fill=set)) + 
   geom_boxplot(width=0.9)+
   scale_color_manual(values = c("PAMUCs"="#2b2b2b", "dizygote twins"="#008000"), 
                      labels = c("PAMUCs"="PAMUCs", "dizygote twins"="Dizygotic twins")) + 
-    scale_fill_manual(values = c("PAMUCs"="#2b2b2b", "dizygote twins"="#008000"), 
-                     labels = c("PAMUCs"="PAMUCs", "dizygote twins"="Dizygotic twins")) + 
+  scale_fill_manual(values = c("PAMUCs"="#2b2b2b", "dizygote twins"="#008000"), 
+                    labels = c("PAMUCs"="PAMUCs", "dizygote twins"="Dizygotic twins")) + 
+  stat_summary(fun.data = give.n, geom = "text", position = position_dodge(width = 0.9)) + 
   labs(x="", y="Difference in no. DNMs",
        col="Set") + 
   ggpubr::theme_pubr()

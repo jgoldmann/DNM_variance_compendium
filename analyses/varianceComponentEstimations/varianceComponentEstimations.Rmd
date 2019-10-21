@@ -171,7 +171,12 @@ ggplot(familyEstimates %>%
     geom_point(aes(size=no.childrenPerFamily), col="#008000", shape=18) + 
   geom_hline(yintercept = 0) + 
   labs(x=NULL, y="Family variance component") + 
-  ggpubr::theme_pubr()
+  ggpubr::theme_pubr() + 
+  geom_text(y=0.9, 
+            cex = 2.8,
+            aes(label=paste0("no. families: ",no.familys, "\n",
+                             "no. children per family ", round(no.childrenPerFamily, 2))))  +
+  ylim(-0.06,1)
 
 allEstimates %>%
     mutate(set = fct_inorder(set),

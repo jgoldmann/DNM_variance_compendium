@@ -94,11 +94,25 @@ agg_res <-
 ```
 
 ```{r}
+give.n <- function(x){
+    return(data.frame(y = -1, 
+                      label = paste0("n=", 
+                                     format(length(x), big.mark = ","))))
+}
+
 ggplot(agg_res, aes(x=dataset, y=delta, group=paste(dataset, set))) +
   geom_violin(aes(fill=set)) + 
   geom_boxplot(fill=NA, width=0.9) + 
   ggpubr::theme_pubr() + 
-  labs(x=NULL, y="Parental age-corrected difference in no. DNMs")
+  labs(x=NULL, y="Parental age-corrected difference in no. DNMs") + 
+  stat_summary(fun.data = give.n, geom = "text", position = position_dodge(width = 0.9))
+```
+
+
+```{r}
+agg_res %>% filter(dataset=="cohort1") %>% with(wilcox.test(delta ~ set))
+agg_res %>% filter(dataset=="cohort2") %>% with(wilcox.test(delta ~ set))
+agg_res %>% filter(dataset=="cohort3") %>% with(wilcox.test(delta ~ set))
 
 agg_res %>% 
   with(wilcox.test(delta ~ set))
