@@ -220,3 +220,18 @@ write_delim(familyEstimates,
 
 ```
 
+
+
+Suplementary: Cohort 3b
+-----------------------
+
+
+```{r}
+samples_c3b %>% 
+  calcRelativeVarCorsWithCi(withBatch = FALSE) %>% 
+  mutate(includesBatch=FALSE, region="unique") %>% 
+  cbind(familyStats(samples_c3b))
+
+```
+
+
