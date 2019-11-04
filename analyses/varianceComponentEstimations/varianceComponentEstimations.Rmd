@@ -169,21 +169,23 @@ ggplot(familyEstimates %>%
            ymax=upper.total)) +  
   geom_errorbar(aes(size=no.childrenPerFamily), col = "grey") +
     geom_point(aes(size=no.childrenPerFamily), col="#008000", shape=18) + 
-  geom_hline(yintercept = 0) + 
+  geom_hline(yintercept = 0, col="green") + 
   labs(x=NULL, y="Family variance component") + 
   ggpubr::theme_pubr() + 
   geom_text(y=0.9, 
             cex = 2.8,
-            aes(label=paste0("no. families: ",no.familys, "\n",
+            aes(label=paste0("no. multi-offspring families: ",no.familys, "\n",
                              "no. children per family ", round(no.childrenPerFamily, 2))))  +
   ylim(-0.06,1)
 
 allEstimates %>%
     mutate(set = fct_inorder(set),
-           factor = fct_relevel(factor, c("Residual", "batch", "familyNr", "Fixed"))) %>%
+           factor = fct_relevel(gsub("familyNr", "Family",  tools::toTitleCase(factor)), 
+                                c("Residual", "Batch", "Family", "Fixed"))) %>%
   ggplot(aes(y=relVar.total, fill=factor, x=set)) + 
     geom_bar(stat="identity") + 
-    ggpubr::theme_pubr()
+    ggpubr::theme_pubr() + 
+  labs(x=NULL, y="Variance component", fill=NULL)
 ```
 
 
@@ -209,11 +211,11 @@ Tables
 
 ```{r}
 write_delim(allEstimates,
-            here("compendium/analyses/varianceComponentEstimations/allEstimates.tsv"),
+            here("dnmvar-compendium/analyses/varianceComponentEstimations/allEstimates.tsv"),
             delim = "\t")
 
 write_delim(familyEstimates,
-            here("compendium/analyses/varianceComponentEstimations/familyEstimates.tsv"),
+            here("dnmvar-compendium/analyses/varianceComponentEstimations/familyEstimates.tsv"),
             delim = "\t")
 
 ```

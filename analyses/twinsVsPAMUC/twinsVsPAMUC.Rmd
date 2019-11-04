@@ -154,7 +154,10 @@ twinsVsUnrelated %>%
   stat_summary(fun.data = give.n, geom = "text", position = position_dodge(width = 0.9)) + 
   labs(x="", y="Difference in no. DNMs",
        col="Set") + 
-  ggpubr::theme_pubr()
+  ggpubr::theme_pubr() + 
+  ggsignif::geom_signif(annotations = c("p=0.13", "p=0.22", "p=0.51"),
+                        y_position = c(22, 35, 40), xmin=c(0.8,1.8,2.8), xmax=c(1.2,2.2,3.2),
+                        col="black")
 
 ```
 

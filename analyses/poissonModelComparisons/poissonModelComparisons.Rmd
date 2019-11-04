@@ -78,6 +78,7 @@ ageMdlFrameList <-
   list(
     samples_c1,
     samples_c2,
+    samples_c3,
     samples_c4
   )
   
@@ -121,8 +122,8 @@ poisModPlots <- foreach(countFrame = countFrameList) %do% {
   ggpubr::theme_pubr()
 }
 cowplot::plot_grid(plotlist = poisModPlots,
-                   nrow = 1,
-                   labels = c("a", "b", "c"))
+                   nrow = 2,
+                   labels = c("a", "b", "c", "d"))
 
 comparisons <- 
   foreach(countFrame = countFrameList,
