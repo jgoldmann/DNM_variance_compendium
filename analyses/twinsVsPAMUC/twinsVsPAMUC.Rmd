@@ -155,7 +155,7 @@ twinsVsUnrelated %>%
   labs(x="", y="Difference in no. DNMs",
        col="Set") + 
   ggpubr::theme_pubr() + 
-  ggsignif::geom_signif(annotations = c("p=0.13", "p=0.22", "p=0.51"),
+  ggsignif::geom_signif(annotations = c("p=0.13", "p=0.22", "p=0.51"),   # see below for the calculation of these values
                         y_position = c(22, 35, 40), xmin=c(0.8,1.8,2.8), xmax=c(1.2,2.2,3.2),
                         col="black")
 
@@ -248,4 +248,92 @@ write_delim(twinsVsUnrelated_tbl,
             path = here("compendium/analyses/twinsVsPAMUC/twinsVsPAMUC.tsv"),
             delim = "\t")
 ```
+
+
+
+Supplementary: TwinsVsPamuc power simulation
+--------------------------------------------
+
+```{r}
+library(rptR)
+library(foreach)
+```
+
+Function for simulating a family effect
+```{r}
+simulateFamEf <- function(samples_c1, varCompFam=0.05) {
+  mdl <- glm(no.DNMs ~ fathersAgeAtConceptionInYears + mothersAgeAtConceptionInYears,
+             data = samples_c1, 
+             family = poisson)
+  predictedNoDNMs <- predict.glm(mdl, type = "response")
+  varFam <- varCompFam*var(samples_c1$no.DNMs)
+  varResi <- var(residuals(mdl, type = "response"))
+  varErr <- varResi - varFam
+  
+  familyEffects <- rnorm(length(unique(samples_c1$familyNr)), sd=sqrt(varFam))
+  names(familyEffects) <- unique(samples_c1$familyNr)
+  residualEffects <- rnorm(nrow(samples_c1), sd=sqrt(varErr))
+  
+  samples_c1 %>%
+    mutate(simFamEf = round(predictedNoDNMs + residualEffects + familyEffects[familyNr]))
+}
+```
+
+Doublechecking if the function works as intended
+```{r}
+checkSims <- function(times, varCompFam = 0.2) {
+  withinCI <- 
+    foreach(1:times,
+            .combine = c) %do% {
+              sim <- simulateFamEf(samples_c3, varCompFam)
+              varCompConfInt <-
+                rpt(simFamEf ~ fathersAgeAtConceptionInYears + mothersAgeAtConceptionInYears + (1|familyNr),
+                    data = sim,
+                    grname=c("familyNr"),
+                    nboot=100,
+                    npermut = 0,
+                    adjusted = FALSE,
+                    datatype = "Gaussian",
+                    parallel = TRUE) %>% 
+                pluck("CI_emp")
+              varCompFam > varCompConfInt[,1] & varCompFam < varCompConfInt[,2]
+            }
+  table(withinCI)
+}
+
+checkSims(20) # should be less than 10% outside of CIs
+checkSims(20, 0.05)
+```
+
+
+Run the simulations for comparing twins versus PAMUCs
+```{r}
+compareTwinDifferences <- function(samples_c3, varComp) {
+  simulateFamEf(samples_c3, varComp) %>%
+    mutate(no.DNMs = as.integer(simFamEf)) %>%
+    assembleTwinsVsUnrelated(maxAgeDiff = maxAgeDiff) %>%
+    with(broom::tidy(wilcox.test(diff_n~set))) %>%
+    mutate(varComp = varComp)
+}
+
+varCompSimulation <- 
+  foreach(varComp = c(0.05, 0.1, 0.2, 0.25, 0.3, 0.35, 0.4, 0.5),
+          .combine = bind_rows) %do% {
+            foreach(1:50,
+                    .combine = bind_rows) %do% 
+              compareTwinDifferences(samples_c3, varComp)
+          }
+```
+
+
+```{r}
+ggplot(varCompSimulation, aes(x=varComp,y=p.value, group=varComp)) + 
+  geom_boxplot()
+
+varCompSimulation %>% 
+  group_by(varComp) %>% 
+  summarize(fracSignif=sum(p.value<=0.05)/length(p.value))
+
+```
+
 

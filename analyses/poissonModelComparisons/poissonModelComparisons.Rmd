@@ -351,18 +351,17 @@ twinDiffs <-
   )
 
 #relate absolute differences to paternal age
-ggplot(twinDiffs,
-       aes(x=fathersAge,
-           y=diff, group=cut(fathersAge, c(15,20,25,30,35,40,45,50,55,60)))) +
-  geom_boxplot() + 
-  facet_wrap(~cohort, scales = "free_x")
 
 ggplot(twinDiffs,
        aes(x=fathersAge,
            y=diff)) +
   geom_point(position="jitter") + 
   geom_smooth(method = "lm") +
-  facet_wrap(~cohort, scales = "free_x")
+  facet_wrap(~cohort, scales = "free_x") + 
+    ggpubr::theme_pubr()
+twinDiffs %>% 
+  group_by(cohort) %>% 
+  group_map(~broom::tidy(lm(diff~fathersAge, data=.)))
 
 pValsForAgeSlope <- 
   foreach(n_i = 1:n,
