@@ -60,24 +60,8 @@ compareFamilyResidualDeltas <- function(autism1, n=1000) {
 
 ```{r}
 doParallel::registerDoParallel(cores=7)
-
 set.seed(4321)
 
-samples_c1 %>% 
-  compareFamilyResidualDeltas() %>%
-  with(wilcox.test(delta ~ set))
-
-samples_c2 %>% 
-  compareFamilyResidualDeltas()  %>%
-  with(wilcox.test(delta ~ set))
-
-samples_c3 %>%
-compareFamilyResidualDeltas() %>%
-  with(wilcox.test(delta ~ set))
-
-```
-
-```{r}
 agg_res <-
   bind_rows(
     samples_c1 %>% 
@@ -132,5 +116,45 @@ Table
 #            delim = "\t")
 #
 ```
+
+
+QQ-Plots
+--------
+
+```{r}
+library(foreach)
+library(cowplot)
+
+qqs <- 
+  foreach(set = list(samples_c1, samples_c2, samples_c3, samples_c4)) %do% {
+    simpMod <- lm(no.DNMs ~ fathersAgeAtConceptionInYears + mothersAgeAtConceptionInYears, set)
+    ggpubr::ggqqplot(resid(simpMod), conf.int = FALSE)
+    
+  }
+plot_grid(
+  plotlist = qqs,
+  ncol=2,
+  labels = paste("Cohort", 1:4),
+  label_x = 0.25
+)
+
+
+```
+
+
+ASD proband versus sibling
+--------------------------
+
+```{r}
+samples_c3 %>% 
+  mutate(resi = residuals(simpMod)) %>% 
+  mutate(proband = if_else(grepl("p", SampleID), "ASD-affected", "unaffected sibling")) %>% 
+  ggpubr::ggboxplot(x="proband", color="proband", y="resi", add="jitter") + 
+  ggpubr::stat_compare_means(comparison = list(c("ASD-affected", "unaffected sibling"))) + 
+  labs(y="parental-age corrected number of DNMs",
+       x=NULL)
+
+```
+
 
 

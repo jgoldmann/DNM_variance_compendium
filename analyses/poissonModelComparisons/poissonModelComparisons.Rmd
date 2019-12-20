@@ -145,6 +145,9 @@ comparisons <-
 comparisons %>%
   knitr::kable()
 
+comparisons %>%
+  as.matrix() %>% 
+  p.adjust(method = "bonferroni")
 
 ```
 

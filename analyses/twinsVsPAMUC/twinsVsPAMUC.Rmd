@@ -148,12 +148,13 @@ twinsVsUnrelated %>%
   geom_violin(aes(fill=set)) + 
   geom_boxplot(width=0.9)+
   scale_color_manual(values = c("PAMUCs"="#2b2b2b", "dizygote twins"="#008000"), 
-                     labels = c("PAMUCs"="PAMUCs", "dizygote twins"="Dizygotic twins")) + 
+                     labels = c("PAMUCs"="PAMUCs", "dizygote twins"="Dizygotic twins"), 
+                     guide="none") + 
   scale_fill_manual(values = c("PAMUCs"="#2b2b2b", "dizygote twins"="#008000"), 
                     labels = c("PAMUCs"="PAMUCs", "dizygote twins"="Dizygotic twins")) + 
   stat_summary(fun.data = give.n, geom = "text", position = position_dodge(width = 0.9)) + 
   labs(x="", y="Difference in no. DNMs",
-       col="Set") + 
+       fill="Set") + 
   ggpubr::theme_pubr() + 
   ggsignif::geom_signif(annotations = c("p=0.13", "p=0.22", "p=0.51"),   # see below for the calculation of these values
                         y_position = c(22, 35, 40), xmin=c(0.8,1.8,2.8), xmax=c(1.2,2.2,3.2),
@@ -316,6 +317,7 @@ compareTwinDifferences <- function(samples_c3, varComp) {
     mutate(varComp = varComp)
 }
 
+set.seed(1234)
 varCompSimulation <- 
   foreach(varComp = c(0.05, 0.1, 0.2, 0.25, 0.3, 0.35, 0.4, 0.5),
           .combine = bind_rows) %do% {
@@ -328,7 +330,9 @@ varCompSimulation <-
 
 ```{r}
 ggplot(varCompSimulation, aes(x=varComp,y=p.value, group=varComp)) + 
-  geom_boxplot()
+  geom_boxplot() + 
+  labs(x="family component",
+       y="p-value for DNM count difference")
 
 varCompSimulation %>% 
   group_by(varComp) %>% 

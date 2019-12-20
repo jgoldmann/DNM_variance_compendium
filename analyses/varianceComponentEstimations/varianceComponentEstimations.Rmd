@@ -159,24 +159,46 @@ familyEstimates %>%
   knitr::kable()
 ```
 
+
+
+Weighted results
+```{r}
+wMeanEstimate <- weighted.mean(
+  x=familyEstimates$relVar.total[familyEstimates$set %in% c("cohort3","cohort4")],
+  w=familyEstimates$no.familys[familyEstimates$set %in% c("cohort3","cohort4")]*familyEstimates$no.childrenPerFamily[familyEstimates$set %in% c("cohort3","cohort4")]
+)
+
+wSdEstimate <- Hmisc::wtd.var(
+  x=familyEstimates$relVar.total[familyEstimates$set %in% c("cohort3","cohort4")],
+  w=familyEstimates$no.familys[familyEstimates$set %in% c("cohort3","cohort4")]*familyEstimates$no.childrenPerFamily[familyEstimates$set %in% c("cohort3","cohort4")]
+) %>% sqrt()
+
+wMeanEstimate
+wMeanEstimate + wSdEstimate * c(-1.96,1.96)
+```
+
+
 Vizualisation
 ```{r}
-ggplot(familyEstimates %>%
-         mutate(set = fct_inorder(set)),
-       aes(x=set, 
+ggplot(familyEstimates %>% filter(set %in% c("cohort3","cohort4")),
+       aes(x=set,
            y=relVar.total,
            ymin=lower.total,
-           ymax=upper.total)) +  
-  geom_errorbar(aes(size=no.childrenPerFamily), col = "grey") +
-    geom_point(aes(size=no.childrenPerFamily), col="#008000", shape=18) + 
-  geom_hline(yintercept = 0, col="green") + 
+           ymax=upper.total)) +
+  geom_linerange() +
+  geom_point(aes(size=no.childrenPerFamily), shape=18) + 
+  coord_flip() + 
+  ggpubr::theme_pubclean() + 
+  geom_hline(yintercept = 0) + 
+  geom_hline(yintercept = wMeanEstimate, lty=2, col="green3") +
+  geom_label(aes(label=round(relVar.total,3)), nudge_x = 0.2) +
+  scale_size(range = c(2,8), guide = FALSE) +
   labs(x=NULL, y="Family variance component") + 
-  ggpubr::theme_pubr() + 
-  geom_text(y=0.9, 
-            cex = 2.8,
+  geom_text(y=0.115, 
+            cex = 3.5,
             aes(label=paste0("no. multi-offspring families: ",no.familys, "\n",
-                             "no. children per family ", round(no.childrenPerFamily, 2))))  +
-  ylim(-0.06,1)
+                             "no. children per family ", round(no.childrenPerFamily, 2)))) +
+  ylim(0,0.135)
 
 allEstimates %>%
     mutate(set = fct_inorder(set),
@@ -186,23 +208,6 @@ allEstimates %>%
     geom_bar(stat="identity") + 
     ggpubr::theme_pubr() + 
   labs(x=NULL, y="Variance component", fill=NULL)
-```
-
-
-Weighted results
-```{r}
-wMeanEstimate <- weighted.mean(
-  x=familyEstimates$relVar.total,
-  w=familyEstimates$no.familys
-)
-
-wSdEstimate <- Hmisc::wtd.var(
-  x=familyEstimates$relVar.total,
-  w=familyEstimates$no.familys
-) %>% sqrt()
-
-wMeanEstimate
-wMeanEstimate + wSdEstimate * c(-1.96,1.96)
 ```
 
 
