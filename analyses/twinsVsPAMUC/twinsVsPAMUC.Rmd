@@ -319,7 +319,7 @@ compareTwinDifferences <- function(samples_c3, varComp) {
 
 set.seed(1234)
 varCompSimulation <- 
-  foreach(varComp = c(0.05, 0.1, 0.2, 0.25, 0.3, 0.35, 0.4, 0.5),
+  foreach(varComp = c(0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.5),
           .combine = bind_rows) %do% {
             foreach(1:50,
                     .combine = bind_rows) %do% 
@@ -334,10 +334,17 @@ ggplot(varCompSimulation, aes(x=varComp,y=p.value, group=varComp)) +
   labs(x="family component",
        y="p-value for DNM count difference")
 
-varCompSimulation %>% 
+power <- 
+  varCompSimulation %>% 
   group_by(varComp) %>% 
   summarize(fracSignif=sum(p.value<=0.05)/length(p.value))
 
+power %>% 
+  ggplot(aes(x=varComp, y=fracSignif)) + 
+  geom_line() + 
+  geom_point() + 
+  labs(x="family component",
+       y="statistical power")
 ```
 
 
