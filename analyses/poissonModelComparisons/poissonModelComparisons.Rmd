@@ -47,7 +47,7 @@ getDensitySum <-
     mutate(pred = predict(mdl, data.frame(fathersAgeAtConceptionInYears,  mothersAgeAtConceptionInYears), type="response")) %>%
     with(lapply(as.list(pred), getPoissonDensity)) %>%
     unlist() %>%
-    matrix(byrow = TRUE, ncol = 76) %>%
+    matrix(byrow = TRUE, ncol = 151) %>%
     colSums()
   }
 getDensitySums <- 
@@ -60,12 +60,12 @@ getDensitySums <-
       mutate(pred = predict(mdls[[substit]], data.frame(fathersAgeAtConceptionInYears,  mothersAgeAtConceptionInYears), type="response")) %>%
       with(lapply(as.list(pred), getPoissonDensity)) %>%
       unlist() %>%
-      matrix(byrow = TRUE, ncol = 76) %>%
+      matrix(byrow = TRUE, ncol = 151) %>%
       colSums()
   }
 getPoissonDensity <- 
   function(expectedNo) {
-  dpois(0:75, expectedNo)  #dpois(x, lambda) gives the density of a poisson distribution with a mean of lamda at position x
+  dpois(0:150, expectedNo)  #dpois(x, lambda) gives the density of a poisson distribution with a mean of lamda at position x
   }
 
 ```
@@ -95,7 +95,7 @@ countFrameList <-
     mdlList <- mdls[[n]]
     poisDens <- 
       tibble(
-        no.DNMs = 0:75,
+        no.DNMs = 0:150,
         dens = getDensitySum(mdlFrame = ageMdlFrame, mdl = mdlList))
     countFrame <- 
       ageMdlFrame %>%
@@ -117,7 +117,7 @@ poisModPlots <- foreach(countFrame = countFrameList) %do% {
        aes(x=no.DNMs)) +
   geom_line(aes(y=predicted), col="red") + 
   geom_point(aes(y=observed)) + 
-  xlim(0, 75) + 
+  xlim(0, 120) + 
   labs(y = "Number of offspring", x="Number of DNMs") + 
   ggpubr::theme_pubr()
 }
@@ -233,7 +233,7 @@ countFrameList <-
       foreach(subs = unique(ageMdlFrame$Substitution),
               .combine = bind_rows) %do% {
                 tibble(
-                  no.muts = 0:75,
+                  no.muts = 0:150,
                   dens = getDensitySums(subs, mdlFrame = ageMdlFrame, mdls = mdlList), 
                   Substitution = subs)
               }
@@ -292,6 +292,10 @@ comparisons <-
 
 comparisons %>%
   knitr::kable()
+comparisons %>%
+  as.matrix() %>% 
+  p.adjust(method = "bonferroni") %>%
+  min(na.rm = TRUE)
 ```
 
 

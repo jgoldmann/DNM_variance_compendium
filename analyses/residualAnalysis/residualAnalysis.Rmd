@@ -89,7 +89,7 @@ ggplot(agg_res, aes(x=dataset, y=delta, group=paste(dataset, set))) +
   ggpubr::theme_pubr() + 
   labs(x=NULL, y="Parental age-corrected difference in no. DNMs") + 
   stat_summary(fun.data = give.n, geom = "text", position = position_dodge(width = 0.9)) + 
-  ggsignif::geom_signif(annotations = c("p=0.28", "p=0.06", "p=0.11"),
+  ggsignif::geom_signif(annotations = c("p=0.56", "p=0.38", "p=0.055"),  # adapt these values manually
                         y_position = c(30, 40, 55), xmin=c(0.8,1.8,2.8), xmax=c(1.2,2.2,3.2))
 ```
 

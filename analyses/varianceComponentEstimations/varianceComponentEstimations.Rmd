@@ -168,25 +168,6 @@ wMeanEstimate <- weighted.mean(
   w=familyEstimates$no.familys[familyEstimates$set %in% c("cohort3","cohort4")]*familyEstimates$no.childrenPerFamily[familyEstimates$set %in% c("cohort3","cohort4")]
 )
 
-wSdEstimate <- Hmisc::wtd.var(
-  x=familyEstimates$relVar.total[familyEstimates$set %in% c("cohort3","cohort4")],
-  w=familyEstimates$no.familys[familyEstimates$set %in% c("cohort3","cohort4")]*familyEstimates$no.childrenPerFamily[familyEstimates$set %in% c("cohort3","cohort4")]
-) %>% sqrt()
-
-wMeanEstimate
-wMeanEstimate + wSdEstimate * c(-1.96,1.96)
-
-
-
-estimateSd <- familyEstimates %>% filter(set %in% c("cohort3","cohort4")) %>% with((upper.total-relVar.total)/1.96)
-Hmisc::wtd.var(
-  x=estimateSd^2,
-  w=familyEstimates$no.familys[familyEstimates$set %in% c("cohort3","cohort4")]*familyEstimates$no.childrenPerFamily[familyEstimates$set %in% c("cohort3","cohort4")]
-)
-
-#https://www.researchgate.net/post/How_to_combine_standard_deviations_for_three_groups
-#https://home.ubalt.edu/ntsbarsh/business-stat/otherapplets/Pooled.htm
-# volgens deze pagnia's kom ik op een pooled variance van 0.018, dus een bovengrens van 0.084
 ```
 
 
