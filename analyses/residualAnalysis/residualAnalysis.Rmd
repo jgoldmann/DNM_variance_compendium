@@ -18,10 +18,10 @@ colSpec <- cols(SampleID = col_character(),
                 familyNr = col_character(), 
                 batch = col_character(),
                 no.DNMs = col_integer())
-samples_c1  <- read_delim(file = here("dnmvar-compendium/data/samples_c1.tsv"),  delim = "\t", col_types = colSpec)
-samples_c2  <- read_delim(file = here("dnmvar-compendium/data/samples_c2.tsv"),  delim = "\t", col_types = colSpec)
-samples_c3  <- read_delim(file = here("dnmvar-compendium/data/samples_c3.tsv"),  delim = "\t", col_types = colSpec)
-samples_c4  <- read_delim(file = here("dnmvar-compendium/data/samples_c4.tsv"),  delim = "\t", col_types = colSpec)
+samples_c1  <- read_delim(file = here("data/samples_c1.tsv"),  delim = "\t", col_types = colSpec)
+samples_c2  <- read_delim(file = here("data/samples_c2.tsv"),  delim = "\t", col_types = colSpec)
+samples_c3  <- read_delim(file = here("data/samples_c3.tsv"),  delim = "\t", col_types = colSpec)
+samples_c4  <- read_delim(file = here("data/samples_c4.tsv"),  delim = "\t", col_types = colSpec)
 ```
 
 
@@ -33,9 +33,9 @@ compareFamilyResidualDeltas <- function(autism1, n=1000) {
     mutate(resi = residuals(simpMod)) %>%
     group_by(familyNr) %>% 
     nest() %>% 
-    mutate(no.offspring = map_dbl(.$data, nrow)) %>% 
+    mutate(no.offspring = map_dbl(data, nrow)) %>% 
     filter(no.offspring == 2) %>% 
-    mutate(delta = map_dbl(.$data, ~abs(diff(.$resi)))) %>%
+    mutate(delta = map_dbl(data, ~abs(diff(.$resi)))) %>%
     dplyr::select(-data, -no.offspring) %>%
     mutate(set="observed")
   sim <- 
@@ -46,9 +46,9 @@ compareFamilyResidualDeltas <- function(autism1, n=1000) {
                 mutate(resi = sample(residuals(simpMod))) %>%
                 group_by(familyNr) %>% 
                 nest() %>% 
-                mutate(no.offspring = map_dbl(.$data, nrow)) %>% 
+                mutate(no.offspring = map_dbl(data, nrow)) %>% 
                 filter(no.offspring == 2) %>% 
-                mutate(delta = map_dbl(.$data, ~abs(diff(.$resi)))) %>%
+                mutate(delta = map_dbl(data, ~abs(diff(.$resi)))) %>%
                 dplyr::select(-data, -no.offspring) %>%
                 mutate(set="simulated")
             }
@@ -145,6 +145,7 @@ ASD proband versus sibling
 --------------------------
 
 ```{r}
+simpMod <- lm(no.DNMs ~ fathersAgeAtConceptionInYears + mothersAgeAtConceptionInYears, samples_c3)
 samples_c3 %>% 
   mutate(resi = residuals(simpMod)) %>% 
   mutate(proband = if_else(grepl("p", SampleID), "ASD-affected", "unaffected sibling")) %>% 
