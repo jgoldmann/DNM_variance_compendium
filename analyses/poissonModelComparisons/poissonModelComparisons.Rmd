@@ -118,12 +118,16 @@ poisModPlots <- foreach(countFrame = countFrameList) %do% {
   geom_line(aes(y=predicted), col="red") + 
   geom_point(aes(y=observed)) + 
   xlim(0, 120) + 
-  labs(y = "Number of offspring", x="Number of DNMs") + 
-  ggpubr::theme_pubr()
+  ggpubr::theme_pubr() +
+  theme(plot.margin = unit(c(1.1,1.1,1.1,1.1), "lines"),legend.text=element_text(size=14),axis.title=element_text(size=14),axis.text=element_text(size=14)) +
+  labs(y = "Number of offspring", x="Number of DNMs")
+  
 }
 cowplot::plot_grid(plotlist = poisModPlots,
                    nrow = 2,
-                   labels = c("a", "b", "c", "d"))
+                   labels = c("A", "B", "C", "D"))
+
+ggsave('Familial_DNM_Fig3.png',last_plot(),device='png',dpi=320,width=10,height=8)
 
 comparisons <- 
   foreach(countFrame = countFrameList,
@@ -258,16 +262,32 @@ countFrameList <-
 
 visualize
 ```{r}
-foreach(countFrame = countFrameList) %do% {
+i = 0
+
+l <- foreach(countFrame = countFrameList) %do% {
+  
+  i = i + 1
+  
   ggplot(countFrame,
        aes(x=no.DNMs)) +
   geom_line(aes(y=predicted), col="red") + 
   geom_point(aes(y=observed)) + 
   facet_wrap(~Substitution) + 
   xlim(0, 40) + 
-  labs(y = "Number of DNMs", x = "Number of Offspring") + 
-    ggpubr::theme_pubr()
+  ggpubr::theme_pubr() +
+  theme(strip.text=element_text(size=14),axis.text=element_text(size=14),axis.title=element_text(size=14)) +
+  labs(y = "Number of DNMs", x = "Number of Offspring") +
+  ggtitle(paste0('Cohort ',i))
+  
 }
+
+cowplot::plot_grid(l[[1]],l[[2]],nrow=2,labels="AUTO")
+ggsave('Familial_DNM_Supp_Fig4AB.png',last_plot(),device='png',dpi=320,width=6,height=10)
+
+cowplot::plot_grid(l[[3]],l[[4]],nrow=2,labels=c("C","D"))
+ggsave('Familial_DNM_Supp_Fig4CD.png',last_plot(),device='png',dpi=320,width=6,height=10)
+
+
 ```
 
 

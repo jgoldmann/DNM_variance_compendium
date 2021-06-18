@@ -90,7 +90,7 @@ assembleTwinsVsUnrelated <-
 ```
 
 Getting main data like in thesis version, except for applying filters for unique genome regions:
-```{r}
+```{r,warning=FALSE}
 maxAgeDiff <- 43
 
 twinsVsUnrelated <-
@@ -112,21 +112,36 @@ Figures
 -------
 
 Visualization of the data for all cohorts apart
-```{r}
-twinsVsUnrelated %>% 
+```{r,warning=FALSE}
+cohort_names <- list(
+  'cohort1'="Cohort 1",
+  'cohort2'="Cohort 2",
+  'cohort3'="Cohort 3",
+  'cohort4'="Cohort 4"
+)
+
+cohort_labeller <- function(variable,value){
+  return(cohort_names[value])
+}
+
+
+p1 <- twinsVsUnrelated %>% 
   filter(set=="dizygote twins") %>% 
   mutate(fatherAge=map(data, ~.$fathersAgeAtConceptionInYears), no.DNMs=map(data, ~.$no.DNMs), group=seq_along(no.pairs)) %>% 
   dplyr::select(-data) %>% 
   unnest() %>% 
-  ggplot(aes(x=fatherAge, y=no.DNMs, group=group)) + 
+  ggplot(aes(x=fatherAge, y=no.DNMs, group=familyNr)) + #this is a hack, should ideally fix this at some point -- grouping variable not working
   geom_point(col="#008000") + 
   geom_path(col="#008000") +
+  facet_wrap(~cohort,labeller = cohort_labeller) + 
+  ggpubr::theme_pubr() +
+  theme(strip.text=element_text(size=14),axis.title=element_text(size=14),axis.text=element_text(size=14)) +
   labs(x="Father's age at conception in years",
-       y="Dizygotic twins' no. DNMs") + 
-  facet_wrap(~cohort) + 
-  ggpubr::theme_pubr()
+       y="Dizygotic twins' no. DNMs")
 
-twinsVsUnrelated %>% 
+
+
+p2 <- twinsVsUnrelated %>% 
   filter(set=="PAMUCs") %>% 
   mutate(fatherAge=map(data, ~.$fathersAgeAtConceptionInYears), no.DNMs=map(data, ~.$no.DNMs), group=seq_along(no.pairs)) %>% 
   dplyr::select(-data) %>% 
@@ -134,31 +149,40 @@ twinsVsUnrelated %>%
   ggplot(aes(x=fatherAge, y=no.DNMs, group=group)) + 
   geom_point(col="#2b2b2b") + 
   geom_path(col="#2b2b2b") +
+  facet_wrap(~cohort,labeller = cohort_labeller) + 
+  ggpubr::theme_pubr() +
+  theme(strip.text=element_text(size=14),axis.title=element_text(size=14),axis.text=element_text(size=14)) +
   labs(x="Father's age at conception in years",
-       y="PAMUCs' no. DNMs") + 
-  facet_wrap(~cohort) + 
-  ggpubr::theme_pubr()
+       y="PAMUCs' no. DNMs")
 
 give.n <- function(x){
     return(data.frame(y = -1, label = paste0("n=", length(x))))
 }
-twinsVsUnrelated %>%
+
+p3 <- twinsVsUnrelated %>%
   ggplot(aes(x=cohort, y=diff_n, col=set)) + 
   geom_violin(aes(fill=set)) + 
   geom_boxplot(width=0.9)+
+  scale_x_discrete(breaks=c("cohort1", "cohort2", "cohort3","cohort4"),
+                  labels=c("Cohort 1", "Cohort 2", "Cohort 3", "Cohort 4")) +
   scale_color_manual(values = c("PAMUCs"="#2b2b2b", "dizygote twins"="#008000"), 
                      labels = c("PAMUCs"="PAMUCs", "dizygote twins"="Dizygotic twins"), 
                      guide="none") + 
   scale_fill_manual(values = c("PAMUCs"="#2b2b2b", "dizygote twins"="#008000"), 
                     labels = c("PAMUCs"="PAMUCs", "dizygote twins"="Dizygotic twins")) + 
   stat_summary(fun.data = give.n, geom = "text", position = position_dodge(width = 0.9)) + 
+  ggpubr::theme_pubr() + 
+  theme(legend.text=element_text(size=14),axis.title=element_text(size=14),axis.text=element_text(size=14)) +
   labs(x="", y="Difference in no. DNMs",
        fill="Set") + 
-  ggpubr::theme_pubr() + 
   ggsignif::geom_signif(annotations = c("p=0.13", "p=0.22", "p=0.51"),   # see below for the calculation of these values
-                        y_position = c(22, 35, 40), xmin=c(0.8,1.8,2.8), xmax=c(1.2,2.2,3.2),
+                        y_position = c(30, 35, 40), xmin=c(0.8,1.8,2.8), xmax=c(1.2,2.2,3.2),
                         col="black")
 
+top <- cowplot::plot_grid(p1,p2,nrow=1,labels="AUTO")
+cowplot::plot_grid(top,p3,labels=c(" ","C"),nrow=2)
+
+ggsave('Familial_DNM_Fig1.png',last_plot(),device='png',dpi=320,width=10,height=8)
 ```
 
 Numbers
@@ -260,7 +284,7 @@ library(foreach)
 ```
 
 Function for simulating a family effect
-```{r}
+```{r,eval=FALSE}
 simulateFamEf <- function(samples_c1, varCompFam=0.05) {
   mdl <- glm(no.DNMs ~ fathersAgeAtConceptionInYears + mothersAgeAtConceptionInYears,
              data = samples_c1, 
@@ -280,7 +304,7 @@ simulateFamEf <- function(samples_c1, varCompFam=0.05) {
 ```
 
 Doublechecking if the function works as intended
-```{r}
+```{r,eval=FALSE}
 checkSims <- function(times, varCompFam = 0.2) {
   withinCI <- 
     foreach(1:times,
@@ -307,7 +331,7 @@ checkSims(20, 0.05)
 
 
 Run the simulations for comparing twins versus PAMUCs
-```{r}
+```{r,eval=FALSE}
 compareTwinDifferences <- function(samples_c3, varComp) {
   simulateFamEf(samples_c3, varComp) %>%
     mutate(no.DNMs = as.integer(simFamEf)) %>%
@@ -327,7 +351,7 @@ varCompSimulation <-
 ```
 
 
-```{r}
+```{r,eval=FALSE}
 ggplot(varCompSimulation, aes(x=varComp,y=p.value, group=varComp)) + 
   geom_boxplot() + 
   labs(x="family component",
