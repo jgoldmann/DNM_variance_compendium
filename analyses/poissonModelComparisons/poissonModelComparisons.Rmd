@@ -14,12 +14,11 @@ library(here)
 library(foreach)
 library(car)
 
-colSpec <- cols(SampleID = col_character(), 
-                Chr = col_character())
-mutations_c1 <- read_delim(here("data/mutations_c1.tsv"), delim = "\t", col_types = colSpec)
-mutations_c2 <- read_delim(here("data/mutations_c2.tsv"), delim = "\t", col_types = colSpec)
-mutations_c3 <- read_delim(here("data/mutations_c3.tsv"), delim = "\t", col_types = colSpec)
-mutations_c4 <- read_delim(here("data/mutations_c4.tsv"), delim = "\t", col_types = colSpec)
+colSpec <- cols(SampleID = col_character())
+mutations_c1 <- read_delim(here("data/mutations_c1_summarised.tsv"), delim = "\t", col_types = colSpec)
+mutations_c2 <- read_delim(here("data/mutations_c2_summarised.tsv"), delim = "\t", col_types = colSpec)
+mutations_c3 <- read_delim(here("data/mutations_c3_summarised.tsv"), delim = "\t", col_types = colSpec)
+mutations_c4 <- read_delim(here("data/mutations_c4_summarised.tsv"), delim = "\t", col_types = colSpec)
 
 colSpec <- cols(SampleID = col_character(), 
                 familyNr = col_character(), 
@@ -161,53 +160,7 @@ Second, specifcally per substitution.
 
 Get the data in shape
 ```{r}
-ageMdlFrameList <- 
-  list(
-    mutations_c1 %>% 
-      full_join(samples_c1, by = "SampleID") %>% 
-      group_by(SampleID, fathersAgeAtConceptionInYears, mothersAgeAtConceptionInYears, Substitution) %>% 
-      dplyr::count() %>% 
-      ungroup() %>% 
-      filter(!is.na(Substitution)) %>%
-      complete(nesting(SampleID, 
-                       fathersAgeAtConceptionInYears, 
-                       mothersAgeAtConceptionInYears), 
-               Substitution, 
-               fill = list(n=0)),
-    mutations_c2 %>% 
-      full_join(samples_c2, by = "SampleID") %>% 
-      group_by(SampleID, fathersAgeAtConceptionInYears, mothersAgeAtConceptionInYears, Substitution) %>% 
-      dplyr::count() %>% 
-      ungroup() %>% 
-      filter(!is.na(Substitution)) %>%
-      complete(nesting(SampleID, 
-                       fathersAgeAtConceptionInYears, 
-                       mothersAgeAtConceptionInYears), 
-               Substitution, 
-               fill = list(n=0)),
-    mutations_c3 %>%
-      full_join(samples_c3, by = "SampleID") %>%
-      group_by(SampleID, fathersAgeAtConceptionInYears, mothersAgeAtConceptionInYears, Substitution) %>% 
-      dplyr::count() %>% 
-      ungroup() %>% 
-      filter(!is.na(Substitution)) %>%
-      complete(nesting(SampleID, 
-                       fathersAgeAtConceptionInYears, 
-                       mothersAgeAtConceptionInYears), 
-               Substitution, 
-               fill = list(n=0)),
-    mutations_c4 %>% 
-      full_join(samples_c4, by = "SampleID") %>% 
-      group_by(SampleID, fathersAgeAtConceptionInYears, mothersAgeAtConceptionInYears, Substitution) %>% 
-      dplyr::count() %>% 
-      ungroup() %>% 
-      filter(!is.na(Substitution)) %>%
-      complete(nesting(SampleID, 
-                       fathersAgeAtConceptionInYears, 
-                       mothersAgeAtConceptionInYears), 
-               Substitution, 
-               fill = list(n=0))
-    )
+ageMdlFrameList <- list(mutations_c1,mutations_c2,mutations_c3,mutations_c4)
 
 mdls <- 
   foreach(ageMdlFrame = ageMdlFrameList) %do% {
@@ -221,7 +174,6 @@ mdls <-
     names(mdlList) <- unique(ageMdlFrame$Substitution)
     return(mdlList)
   }
-
 ```
 
 
