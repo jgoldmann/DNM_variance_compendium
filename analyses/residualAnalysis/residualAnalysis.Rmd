@@ -18,12 +18,35 @@ colSpec <- cols(SampleID = col_character(),
                 familyNr = col_character(), 
                 batch = col_character(),
                 no.DNMs = col_integer())
-samples_c1  <- read_delim(file = here("dnmvar-compendium/data/samples_c1.tsv"),  delim = "\t", col_types = colSpec)
-samples_c2  <- read_delim(file = here("dnmvar-compendium/data/samples_c2.tsv"),  delim = "\t", col_types = colSpec)
-samples_c3  <- read_delim(file = here("dnmvar-compendium/data/samples_c3.tsv"),  delim = "\t", col_types = colSpec)
-samples_c4  <- read_delim(file = here("dnmvar-compendium/data/samples_c4.tsv"),  delim = "\t", col_types = colSpec)
+samples_c1  <- read_delim(file = here("data/samples_c1.tsv"),  delim = "\t", col_types = colSpec)
+samples_c2  <- read_delim(file = here("data/samples_c2.tsv"),  delim = "\t", col_types = colSpec)
+samples_c3  <- read_delim(file = here("data/samples_c3.tsv"),  delim = "\t", col_types = colSpec)
+samples_c4  <- read_delim(file = here("data/samples_c4.tsv"),  delim = "\t", col_types = colSpec)
 ```
 
+```{r}
+set.seed(4321)
+ungroup_by <- function(x,...){
+  group_by_(x, .dots = group_vars(x)[!group_vars(x) %in% ...])
+}
+
+samples_c4 <- samples_c4 %>% 
+  group_by(familyNr) %>%
+  sample_n(2,replace=FALSE) %>%
+  ungroup_by('familyNr')
+
+#Additional analysis for Reviewer 3: Sampling all pairs as pseudo-families and sampling the oldest and youngest sibling per family as a sibling pair
+#pseudo_families = as.character(rep(1:210,each=2))
+
+#samples_c5 <- samples_c4 %>%
+  #add_column(pseudo_families) %>%
+  #mutate(familyNr=paste0(familyNr,'-',pseudo_families))
+
+#samples_c4 <- samples_c4 %>% 
+  #group_by(familyNr) %>%
+  #filter(fathersAgeAtConceptionInYears == min(fathersAgeAtConceptionInYears) | fathersAgeAtConceptionInYears == max(fathersAgeAtConceptionInYears)) %>%
+  #ungroup_by('familyNr')
+```
 
 ```{r}
 compareFamilyResidualDeltas <- function(autism1, n=1000) {
@@ -33,9 +56,9 @@ compareFamilyResidualDeltas <- function(autism1, n=1000) {
     mutate(resi = residuals(simpMod)) %>%
     group_by(familyNr) %>% 
     nest() %>% 
-    mutate(no.offspring = map_dbl(.$data, nrow)) %>% 
+    mutate(no.offspring = map_dbl(data, nrow)) %>% 
     filter(no.offspring == 2) %>% 
-    mutate(delta = map_dbl(.$data, ~abs(diff(.$resi)))) %>%
+    mutate(delta = map_dbl(data, ~abs(diff(.$resi)))) %>%
     dplyr::select(-data, -no.offspring) %>%
     mutate(set="observed")
   sim <- 
@@ -46,9 +69,9 @@ compareFamilyResidualDeltas <- function(autism1, n=1000) {
                 mutate(resi = sample(residuals(simpMod))) %>%
                 group_by(familyNr) %>% 
                 nest() %>% 
-                mutate(no.offspring = map_dbl(.$data, nrow)) %>% 
+                mutate(no.offspring = map_dbl(data, nrow)) %>% 
                 filter(no.offspring == 2) %>% 
-                mutate(delta = map_dbl(.$data, ~abs(diff(.$resi)))) %>%
+                mutate(delta = map_dbl(data, ~abs(diff(.$resi)))) %>%
                 dplyr::select(-data, -no.offspring) %>%
                 mutate(set="simulated")
             }
@@ -71,7 +94,13 @@ agg_res <-
       mutate(dataset = "cohort2"),
     samples_c3 %>%
       compareFamilyResidualDeltas() %>%
-      mutate(dataset = "cohort3")
+      mutate(dataset = "cohort3"),
+    samples_c4 %>%
+      compareFamilyResidualDeltas() %>%
+      mutate(dataset = "cohort4")
+    #samples_c5 %>%
+      #compareFamilyResidualDeltas() %>%
+      #mutate(dataset = "cohort5")
   ) %>% 
   mutate(dataset = fct_inorder(dataset))
 ```
@@ -83,14 +112,23 @@ give.n <- function(x){
                                      format(length(x), big.mark = ","))))
 }
 
-ggplot(agg_res, aes(x=dataset, y=delta, group=paste(dataset, set))) +
-  geom_violin(aes(fill=set)) + 
+labels = c('Cohort 1','Cohort 2','Cohort 3','Cohort 4')
+
+agg_res <- agg_res %>%
+  mutate(Set=if_else(set=='observed','Observed','Expected'))
+
+ggplot(agg_res, aes(x=factor(dataset,levels=c('cohort1','cohort2','cohort3','cohort4')), y=delta, group=paste(dataset, set))) +
+  geom_violin(aes(fill=Set)) + 
+  scale_x_discrete(labels=labels) +
   geom_boxplot(fill=NA, width=0.9) + 
   ggpubr::theme_pubr() + 
+  theme(legend.text=element_text(size=14),axis.title=element_text(size=14),axis.text=element_text(size=14)) +
   labs(x=NULL, y="Parental age-corrected difference in no. DNMs") + 
   stat_summary(fun.data = give.n, geom = "text", position = position_dodge(width = 0.9)) + 
-  ggsignif::geom_signif(annotations = c("p=0.56", "p=0.38", "p=0.055"),  # adapt these values manually
-                        y_position = c(30, 40, 55), xmin=c(0.8,1.8,2.8), xmax=c(1.2,2.2,3.2))
+  ggsignif::geom_signif(annotations = c("p=0.57", "p=0.35", "p=0.053", "p=0.41"),  # adapt these values manually
+                        y_position = c(30, 40, 55, 65), xmin=c(0.8,1.8,2.8,3.8), xmax=c(1.2,2.2,3.2,4.2))
+
+ggsave('Familial_DNM_Supp_Fig1.png',last_plot(),device='png',dpi=320,width=10,height=7)
 ```
 
 
@@ -98,6 +136,7 @@ ggplot(agg_res, aes(x=dataset, y=delta, group=paste(dataset, set))) +
 agg_res %>% filter(dataset=="cohort1") %>% with(wilcox.test(delta ~ set))
 agg_res %>% filter(dataset=="cohort2") %>% with(wilcox.test(delta ~ set))
 agg_res %>% filter(dataset=="cohort3") %>% with(wilcox.test(delta ~ set))
+agg_res %>% filter(dataset=="cohort4") %>% with(wilcox.test(delta ~ set))
 
 agg_res %>% 
   with(wilcox.test(delta ~ set))
@@ -137,6 +176,7 @@ plot_grid(
   label_x = 0.25
 )
 
+ggsave('Familial_DNM_Supp_Fig5.png',last_plot(),device='png',dpi=320,width=7,height=7)
 
 ```
 
@@ -145,13 +185,17 @@ ASD proband versus sibling
 --------------------------
 
 ```{r}
+simpMod <- lm(no.DNMs ~ fathersAgeAtConceptionInYears + mothersAgeAtConceptionInYears, samples_c3)
 samples_c3 %>% 
   mutate(resi = residuals(simpMod)) %>% 
-  mutate(proband = if_else(grepl("p", SampleID), "ASD-affected", "unaffected sibling")) %>% 
+  mutate(proband = if_else(grepl("p", SampleID), "ASD-Affected Proband", "Unaffected Sibling")) %>% 
   ggpubr::ggboxplot(x="proband", color="proband", y="resi", add="jitter") + 
-  ggpubr::stat_compare_means(comparison = list(c("ASD-affected", "unaffected sibling"))) + 
-  labs(y="parental-age corrected number of DNMs",
+  ggpubr::stat_compare_means(comparison = list(c("ASD-Affected Proband", "Unaffected Sibling"))) + 
+  theme(legend.text=element_text(size=14),axis.title=element_text(size=14),axis.text=element_text(size=14),legend.title=element_blank()) +
+  labs(y="Parental-age corrected number of DNMs",
        x=NULL)
+
+ggsave('Familial_DNM_Supp_Fig6.png',last_plot(),device='png',dpi=320,width=7,height=7)
 
 ```
 

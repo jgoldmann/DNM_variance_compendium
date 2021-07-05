@@ -17,10 +17,10 @@ colSpec <- cols(SampleID = col_character(),
                 familyNr = col_character(), 
                 batch = col_character(),
                 no.DNMs = col_integer())
-samples_c1  <- read_delim(file = here("dnmvar-compendium/data/samples_c1.tsv"),  delim = "\t", col_types = colSpec)
-samples_c2  <- read_delim(file = here("dnmvar-compendium/data/samples_c2.tsv"),  delim = "\t", col_types = colSpec)
-samples_c3  <- read_delim(file = here("dnmvar-compendium/data/samples_c3.tsv"),  delim = "\t", col_types = colSpec)
-samples_c4  <- read_delim(file = here("dnmvar-compendium/data/samples_c4.tsv"),  delim = "\t", col_types = colSpec)
+samples_c1  <- read_delim(file = here("data/samples_c1.tsv"),  delim = "\t", col_types = colSpec)
+samples_c2  <- read_delim(file = here("data/samples_c2.tsv"),  delim = "\t", col_types = colSpec)
+samples_c3  <- read_delim(file = here("data/samples_c3.tsv"),  delim = "\t", col_types = colSpec)
+samples_c4  <- read_delim(file = here("data/samples_c4.tsv"),  delim = "\t", col_types = colSpec)
 #samples_c3b <- read_delim(file = here("dnmvar-compendium/data/samples_c3b.tsv"), delim = "\t", col_types = colSpec)
 
 ```
@@ -140,8 +140,6 @@ allEstimates <-
 # 3. Several warnings like "In checkConv(attr(opt, "derivs"), opt$par, ctrl = control$checkConv,  :  Model failed to converge with max|grad| = 0.00302837 (tol = 0.002, component 1)"
 #    These warnings indicate difficulties of the standard fitting algorithm to accurately estimate the parameters. Following the recommendations for dealing with these warnings, we control that the parameter estimations are close to equal to the results obtained by another estimator (without warnings) in the function 'doublecheckFitConvergence' defined above. See also  https://bbolker.github.io/mixedmodels-misc/glmmFAQ.html#troubleshooting
 
-
-
 familyEstimates <-
   allEstimates %>%
   filter(factor == "familyNr") %>%
@@ -173,6 +171,10 @@ wMeanEstimate <- weighted.mean(
 
 Vizualisation
 ```{r}
+
+labels <- c('Cohort 3','Cohort 4')
+
+#Cohorts 3 and 4 (main text)
 ggplot(familyEstimates %>% filter(set %in% c("cohort3","cohort4")),
        aes(x=set,
            y=relVar.total,
@@ -182,16 +184,45 @@ ggplot(familyEstimates %>% filter(set %in% c("cohort3","cohort4")),
   geom_point(aes(size=no.childrenPerFamily), shape=18) + 
   coord_flip() + 
   ggpubr::theme_pubclean() + 
+  theme(legend.text=element_text(size=14),axis.title=element_text(size=14),axis.text=element_text(size=14)) +
   geom_hline(yintercept = 0) + 
   geom_hline(yintercept = wMeanEstimate, lty=2, col="green3") +
-  geom_label(aes(label=round(relVar.total,3)), nudge_x = 0.2) +
+  scale_x_discrete(labels=labels) +
+  geom_label(aes(label=round(relVar.total,3)), nudge_x = 0.2, size=6) +
   scale_size(range = c(2,8), guide = FALSE) +
   labs(x=NULL, y="Family variance component") + 
   geom_text(y=0.115, 
-            cex = 3.5,
+            size = 5,
             aes(label=paste0("no. multi-offspring families: ",no.familys, "\n",
                              "no. children per family ", round(no.childrenPerFamily, 2)))) +
   ylim(0,0.135)
+
+ggsave('Familial_DNM_Fig2.png',last_plot(),device='png',dpi=320, width=9, height=6)
+
+#All cohorts (supplement)
+ggplot(familyEstimates %>% filter(set %in% c("cohort1","cohort2","cohort3","cohort4")),
+       aes(x=set,
+           y=relVar.total,
+           ymin=lower.total,
+           ymax=upper.total)) +
+  geom_linerange() +
+  geom_point(aes(size=no.childrenPerFamily), shape=18) + 
+  coord_flip() + 
+  ggpubr::theme_pubclean() + 
+  theme(legend.text=element_text(size=14),axis.title=element_text(size=14),axis.text=element_text(size=14)) +
+  geom_hline(yintercept = 0) + 
+  geom_hline(yintercept = wMeanEstimate, lty=2, col="green3") +
+  scale_x_discrete(labels=labels) +
+  geom_label(aes(label=round(relVar.total,3)), nudge_x = 0.2, size=6) +
+  scale_size(range = c(2,8), guide = FALSE) +
+  labs(x=NULL, y="Family variance component") + 
+  geom_text(y=0.3, 
+            size = 5,
+            aes(label=paste0("no. multi-offspring families: ",no.familys, "\n",
+                             "no. children per family ", round(no.childrenPerFamily, 2))))
+
+ggsave('Familial_DNM_Supp_Fig2.png',last_plot(),device='png',dpi=320,width=13,height=8)
+
 
 allEstimates %>%
     mutate(set = fct_inorder(set),
@@ -200,7 +231,10 @@ allEstimates %>%
   ggplot(aes(y=relVar.total, fill=factor, x=set)) + 
     geom_bar(stat="identity") + 
     ggpubr::theme_pubr() + 
-  labs(x=NULL, y="Variance component", fill=NULL)
+    theme(legend.text=element_text(size=14),axis.title=element_text(size=14),axis.text=element_text(size=14),legend.title=element_blank()) +
+    labs(x=NULL, y="Variance component", fill=NULL)
+
+ggsave('Familial_DNM_Supp_Fig3.png',last_plot(),device='png',dpi=320,width=7,height=7)
 ```
 
 
@@ -209,11 +243,11 @@ Tables
 
 ```{r}
 write_delim(allEstimates,
-            here("dnmvar-compendium/analyses/varianceComponentEstimations/allEstimates.tsv"),
+            here("analyses/varianceComponentEstimations/allEstimates.tsv"),
             delim = "\t")
 
 write_delim(familyEstimates,
-            here("dnmvar-compendium/analyses/varianceComponentEstimations/familyEstimates.tsv"),
+            here("analyses/varianceComponentEstimations/familyEstimates.tsv"),
             delim = "\t")
 
 ```

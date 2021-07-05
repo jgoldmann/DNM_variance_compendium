@@ -18,11 +18,11 @@ colSpec <- cols(SampleID = col_character(),
                 familyNr = col_character(), 
                 batch = col_character(),
                 no.DNMs = col_integer())
-samples_c1  <- read_delim(file = here("dnmvar-compendium/data/samples_c1.tsv"),  delim = "\t", col_types = colSpec)
-samples_c2  <- read_delim(file = here("dnmvar-compendium/data/samples_c2.tsv"),  delim = "\t", col_types = colSpec)
-samples_c3  <- read_delim(file = here("dnmvar-compendium/data/samples_c3.tsv"),  delim = "\t", col_types = colSpec)
-samples_c4  <- read_delim(file = here("dnmvar-compendium/data/samples_c4.tsv"),  delim = "\t", col_types = colSpec)
-#samples_c3b <- read_delim(file = here("dnmvar-compendium/data/samples_c3b.tsv"), delim = "\t", col_types = colSpec)
+samples_c1  <- read_delim(file = here("data/samples_c1.tsv"),  delim = "\t", col_types = colSpec)
+samples_c2  <- read_delim(file = here("data/samples_c2.tsv"),  delim = "\t", col_types = colSpec)
+samples_c3  <- read_delim(file = here("data/samples_c3.tsv"),  delim = "\t", col_types = colSpec)
+samples_c4  <- read_delim(file = here("data/samples_c4.tsv"),  delim = "\t", col_types = colSpec)
+#samples_c3b <- read_delim(file = here("data/samples_c3b.tsv"), delim = "\t", col_types = colSpec)
 
 cohorts <- 
   list(

@@ -14,21 +14,20 @@ library(here)
 library(foreach)
 library(car)
 
-colSpec <- cols(SampleID = col_character(), 
-                Chr = col_character())
-mutations_c1 <- read_delim(here("dnmvar-compendium/data/mutations_c1.tsv"), delim = "\t", col_types = colSpec)
-mutations_c2 <- read_delim(here("dnmvar-compendium/data/mutations_c2.tsv"), delim = "\t", col_types = colSpec)
-mutations_c3 <- read_delim(here("dnmvar-compendium/data/mutations_c3.tsv"), delim = "\t", col_types = colSpec)
-mutations_c4 <- read_delim(here("dnmvar-compendium/data/mutations_c4.tsv"), delim = "\t", col_types = colSpec)
+colSpec <- cols(SampleID = col_character())
+mutations_c1 <- read_delim(here("data/mutations_c1_summarised.tsv"), delim = "\t", col_types = colSpec)
+mutations_c2 <- read_delim(here("data/mutations_c2_summarised.tsv"), delim = "\t", col_types = colSpec)
+mutations_c3 <- read_delim(here("data/mutations_c3_summarised.tsv"), delim = "\t", col_types = colSpec)
+mutations_c4 <- read_delim(here("data/mutations_c4_summarised.tsv"), delim = "\t", col_types = colSpec)
 
 colSpec <- cols(SampleID = col_character(), 
                 familyNr = col_character(), 
                 batch = col_character(),
                 no.DNMs = col_integer())
-samples_c1 <-  read_delim(file = here("dnmvar-compendium/data/samples_c1.tsv"),  delim = "\t", col_types = colSpec)
-samples_c2 <-  read_delim(file = here("dnmvar-compendium/data/samples_c2.tsv"),  delim = "\t", col_types = colSpec)
-samples_c3 <-  read_delim(file = here("dnmvar-compendium/data/samples_c3.tsv"),  delim = "\t", col_types = colSpec)
-samples_c4 <-  read_delim(file = here("dnmvar-compendium/data/samples_c4.tsv"),  delim = "\t", col_types = colSpec)
+samples_c1 <-  read_delim(file = here("data/samples_c1.tsv"),  delim = "\t", col_types = colSpec)
+samples_c2 <-  read_delim(file = here("data/samples_c2.tsv"),  delim = "\t", col_types = colSpec)
+samples_c3 <-  read_delim(file = here("data/samples_c3.tsv"),  delim = "\t", col_types = colSpec)
+samples_c4 <-  read_delim(file = here("data/samples_c4.tsv"),  delim = "\t", col_types = colSpec)
 
 ```
 
@@ -118,12 +117,16 @@ poisModPlots <- foreach(countFrame = countFrameList) %do% {
   geom_line(aes(y=predicted), col="red") + 
   geom_point(aes(y=observed)) + 
   xlim(0, 120) + 
-  labs(y = "Number of offspring", x="Number of DNMs") + 
-  ggpubr::theme_pubr()
+  ggpubr::theme_pubr() +
+  theme(plot.margin = unit(c(1.1,1.1,1.1,1.1), "lines"),legend.text=element_text(size=14),axis.title=element_text(size=14),axis.text=element_text(size=14)) +
+  labs(y = "Number of offspring", x="Number of DNMs")
+  
 }
 cowplot::plot_grid(plotlist = poisModPlots,
                    nrow = 2,
-                   labels = c("a", "b", "c", "d"))
+                   labels = c("A", "B", "C", "D"))
+
+ggsave('Familial_DNM_Fig3.png',last_plot(),device='png',dpi=320,width=10,height=8)
 
 comparisons <- 
   foreach(countFrame = countFrameList,
@@ -157,53 +160,7 @@ Second, specifcally per substitution.
 
 Get the data in shape
 ```{r}
-ageMdlFrameList <- 
-  list(
-    mutations_c1 %>% 
-      full_join(samples_c1, by = "SampleID") %>% 
-      group_by(SampleID, fathersAgeAtConceptionInYears, mothersAgeAtConceptionInYears, Substitution) %>% 
-      dplyr::count() %>% 
-      ungroup() %>% 
-      filter(!is.na(Substitution)) %>%
-      complete(nesting(SampleID, 
-                       fathersAgeAtConceptionInYears, 
-                       mothersAgeAtConceptionInYears), 
-               Substitution, 
-               fill = list(n=0)),
-    mutations_c2 %>% 
-      full_join(samples_c2, by = "SampleID") %>% 
-      group_by(SampleID, fathersAgeAtConceptionInYears, mothersAgeAtConceptionInYears, Substitution) %>% 
-      dplyr::count() %>% 
-      ungroup() %>% 
-      filter(!is.na(Substitution)) %>%
-      complete(nesting(SampleID, 
-                       fathersAgeAtConceptionInYears, 
-                       mothersAgeAtConceptionInYears), 
-               Substitution, 
-               fill = list(n=0)),
-    mutations_c3 %>%
-      full_join(samples_c3, by = "SampleID") %>%
-      group_by(SampleID, fathersAgeAtConceptionInYears, mothersAgeAtConceptionInYears, Substitution) %>% 
-      dplyr::count() %>% 
-      ungroup() %>% 
-      filter(!is.na(Substitution)) %>%
-      complete(nesting(SampleID, 
-                       fathersAgeAtConceptionInYears, 
-                       mothersAgeAtConceptionInYears), 
-               Substitution, 
-               fill = list(n=0)),
-    mutations_c4 %>% 
-      full_join(samples_c4, by = "SampleID") %>% 
-      group_by(SampleID, fathersAgeAtConceptionInYears, mothersAgeAtConceptionInYears, Substitution) %>% 
-      dplyr::count() %>% 
-      ungroup() %>% 
-      filter(!is.na(Substitution)) %>%
-      complete(nesting(SampleID, 
-                       fathersAgeAtConceptionInYears, 
-                       mothersAgeAtConceptionInYears), 
-               Substitution, 
-               fill = list(n=0))
-    )
+ageMdlFrameList <- list(mutations_c1,mutations_c2,mutations_c3,mutations_c4)
 
 mdls <- 
   foreach(ageMdlFrame = ageMdlFrameList) %do% {
@@ -217,7 +174,6 @@ mdls <-
     names(mdlList) <- unique(ageMdlFrame$Substitution)
     return(mdlList)
   }
-
 ```
 
 
@@ -258,16 +214,32 @@ countFrameList <-
 
 visualize
 ```{r}
-foreach(countFrame = countFrameList) %do% {
+i = 0
+
+l <- foreach(countFrame = countFrameList) %do% {
+  
+  i = i + 1
+  
   ggplot(countFrame,
        aes(x=no.DNMs)) +
   geom_line(aes(y=predicted), col="red") + 
   geom_point(aes(y=observed)) + 
   facet_wrap(~Substitution) + 
   xlim(0, 40) + 
-  labs(y = "Number of DNMs", x = "Number of Offspring") + 
-    ggpubr::theme_pubr()
+  ggpubr::theme_pubr() +
+  theme(strip.text=element_text(size=14),axis.text=element_text(size=14),axis.title=element_text(size=14)) +
+  labs(y = "Number of DNMs", x = "Number of Offspring") +
+  ggtitle(paste0('Cohort ',i))
+  
 }
+
+cowplot::plot_grid(l[[1]],l[[2]],nrow=2,labels="AUTO")
+ggsave('Familial_DNM_Supp_Fig4AB.png',last_plot(),device='png',dpi=320,width=6,height=10)
+
+cowplot::plot_grid(l[[3]],l[[4]],nrow=2,labels=c("C","D"))
+ggsave('Familial_DNM_Supp_Fig4CD.png',last_plot(),device='png',dpi=320,width=6,height=10)
+
+
 ```
 
 
